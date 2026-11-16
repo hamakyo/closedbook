@@ -30,29 +30,29 @@ NotebookLM のようなツールは「開いた本」です。資料を入れて
 
 ## クイックスタート
 
-前提：Node.js、Cloudflare アカウント。
+前提：Node.js、pnpm、Cloudflare アカウント。
 
 ```bash
 git clone https://github.com/hamakyo/closedbook.git
 cd closedbook
-npm install
+pnpm install
 
 # Cloudflare 側のリソースを作成
-npx wrangler d1 create closedbook
-npx wrangler r2 bucket create closedbook-sources
-npx wrangler vectorize create closedbook-chunks --dimensions=1536 --metric=cosine
+pnpm exec wrangler d1 create closedbook
+pnpm exec wrangler r2 bucket create closedbook-sources
+pnpm exec wrangler vectorize create closedbook-chunks --dimensions=1536 --metric=cosine
 # → wrangler.toml の database_id を、発行された実 ID に書き換える
 
 # スキーマ適用
-npm run db:local    # ローカル確認用
-npm run db:remote   # 本番用
+pnpm db:local    # ローカル確認用
+pnpm db:remote   # 本番用
 
 # LLM のキー（自分のもの）を設定
 cp .dev.vars.example .dev.vars   # ローカル用：LLM_API_KEY を記入
-npx wrangler secret put LLM_API_KEY   # 本番用
+pnpm exec wrangler secret put LLM_API_KEY   # 本番用
 
-npm run dev         # ローカル起動
-npm run deploy      # 自分の Cloudflare にデプロイ
+pnpm dev         # ローカル起動
+pnpm deploy      # 自分の Cloudflare にデプロイ
 ```
 
 エンドポイントやモデルは `wrangler.toml` の `[vars]` で変更できます（`LLM_BASE_URL` / `LLM_MODEL` / `EMBEDDING_MODEL`）。埋め込みモデルの次元を変えたら、Vectorize インデックスの `--dimensions` も合わせてください。
