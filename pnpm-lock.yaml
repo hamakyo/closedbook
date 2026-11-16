@@ -175,6 +175,9 @@ importers:
 
   .:
     dependencies:
+      fundamental-styles:
+        specifier: ^0.42.0
+        version: 0.42.0(@fundamental-styles/common-css@0.42.0)(@sap-theming/theming-base-content@11.36.5)
       hono:
         specifier: ^4.6.0
         version: 4.13.18
@@ -400,6 +403,9 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@fundamental-styles/common-css@0.42.0':
+    resolution: {integrity: sha512-6pZrH7cqHSa8SzBX+48sA1xA2pQ2opQznaMqGlzG7pkyn+GdReSPbLTpbmjVluwL5A3XFXnBv7qpaTNsjYUqfQ==}
+
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
     engines: {node: '>=18'}
@@ -581,6 +587,9 @@ packages:
   '@poppinss/exception@1.2.3':
     resolution: {integrity: sha512-dCED+QRChTVatE9ibtoaxc+WkdzOSjYTKi/+uacHWIsfodVfpsueo3+DKpgU5Px8qXjgmXkSvhXvSCz3fnP9lw==}
 
+  '@sap-theming/theming-base-content@11.36.5':
+    resolution: {integrity: sha512-oYtGgAHFI8eqOSB+LH5XX2IreBDljStDavpZ+JwzBnY2K6T6TYqKLqUTHvEm+a4quUS5gcIKsP2SCimc0j48Jw==}
+
   '@sindresorhus/is@7.2.0':
     resolution: {integrity: sha512-P1Cz1dWaFfR4IR+U13mqqiGsLFf1KbayybWwdd2vfctdV6hDpUkgCY0nKOLLTMSoRd/jJNjtbqzf13K8DCCXQw==}
     engines: {node: '>=18'}
@@ -611,6 +620,12 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  fundamental-styles@0.42.0:
+    resolution: {integrity: sha512-PlFxQVZIG0zzUamikjwH3HrlkJO4duhZZCg+Gn9DwAsxEy2cpZcE8uPc1r+BTj1mMoEVEtZXF/2sFqE3kPZ5bw==}
+    peerDependencies:
+      '@fundamental-styles/common-css': 0.42.0
+      '@sap-theming/theming-base-content': ^11.36.0
 
   hono@4.13.18:
     resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
@@ -815,6 +830,10 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@fundamental-styles/common-css@0.42.0':
+    dependencies:
+      '@sap-theming/theming-base-content': 11.36.5
+
   '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
@@ -942,6 +961,8 @@ snapshots:
 
   '@poppinss/exception@1.2.3': {}
 
+  '@sap-theming/theming-base-content@11.36.5': {}
+
   '@sindresorhus/is@7.2.0': {}
 
   '@speed-highlight/core@1.2.24': {}
@@ -985,6 +1006,11 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  fundamental-styles@0.42.0(@fundamental-styles/common-css@0.42.0)(@sap-theming/theming-base-content@11.36.5):
+    dependencies:
+      '@fundamental-styles/common-css': 0.42.0
+      '@sap-theming/theming-base-content': 11.36.5
 
   hono@4.13.18: {}
 

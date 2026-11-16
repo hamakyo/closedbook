@@ -25,6 +25,7 @@ NotebookLM のようなツールは「開いた本」です。資料を入れて
 | 資料ファイルの原本 | R2 |
 | ベクトル検索 | Vectorize |
 | LLM | **BYOK**：自分の API キーを使う。OpenAI 互換エンドポイントなら公式・ゲートウェイを問わない |
+| UI | SAP Fundamental Styles（Fiori Horizon）を流用。独自デザインシステムは作らない |
 
 ## クイックスタート
 
