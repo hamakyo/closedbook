@@ -2,9 +2,12 @@ name = "closedbook"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
-# The UI is a single HTML file served by the Worker itself.
+# The UI is a single HTML file served by the Worker itself, with the
+# Fundamental Styles CSS self-hosted the same way (the CDN copy did not
+# reliably reach every browser; same-origin always works).
 rules = [
-  { type = "Text", globs = ["**/*.html"], fallthrough = true }
+  { type = "Text", globs = ["**/*.html"], fallthrough = true },
+  { type = "Text", globs = ["**/*.css"], fallthrough = true }
 ]
 
 # --- D1: relational data (projects, questions, attempts, grades, gaps) ---

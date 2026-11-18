@@ -1600,10 +1600,11 @@ phases.post("/:id/phases/3/questions", async (c) => {
     );
   }
 
-  // Regenerating replaces the previous set (attempts cascade-delete).
+  // Regenerating replaces the previous Phase 3 set (attempts on those
+  // cascade-delete). Retest questions belong to their gaps and survive.
   await c.env.DB.batch([
     c.env.DB
-      .prepare("DELETE FROM questions WHERE project_id = ?")
+      .prepare("DELETE FROM questions WHERE project_id = ? AND gap_id IS NULL")
       .bind(projectId),
     ...questions.map((question) =>
       c.env.DB
@@ -1646,7 +1647,7 @@ phases.get("/:id/phases/3/questions", async (c) => {
     .first<{ id: string }>();
   if (!project) return c.json({ error: "project not found" }, 404);
   const { results } = await c.env.DB.prepare(
-    "SELECT id, body, tag FROM questions WHERE project_id = ? ORDER BY rowid ASC",
+    "SELECT id, body, tag FROM questions WHERE project_id = ? AND gap_id IS NULL ORDER BY rowid ASC",
   )
     .bind(projectId)
     .all<{ id: string; body: string; tag: string }>();

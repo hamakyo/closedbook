@@ -3,10 +3,21 @@ import type { Env } from "./env";
 import { projects } from "./routes/projects";
 import { phases } from "./routes/phases";
 import uiHtml from "./ui.html";
+import themingCss from "./assets/css_variables.css";
+import fundamentalCss from "./assets/fundamental-styles.css";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/", (c) => c.html(uiHtml));
+
+const cssHeaders = {
+  "Content-Type": "text/css; charset=utf-8",
+  "Cache-Control": "public, max-age=86400",
+};
+app.get("/assets/css_variables.css", (c) => c.body(themingCss, 200, cssHeaders));
+app.get("/assets/fundamental-styles.css", (c) =>
+  c.body(fundamentalCss, 200, cssHeaders),
+);
 
 app.get("/api", (c) =>
   c.json({

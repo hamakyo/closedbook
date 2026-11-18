@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClosedBook</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fundamental-styles@0.42.0/dist/fundamental-styles.css">
+<link rel="stylesheet" href="/assets/css_variables.css">
+<link rel="stylesheet" href="/assets/fundamental-styles.css">
 <style>
   body { margin: 0; background: var(--sapBackgroundColor, #f7f7f7); }
   .cb-main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
@@ -116,6 +117,19 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<"
 const PHASES = ["資料", "骨格", "論争", "テスト", "穴", "再テスト"];
 const state = { project: null, answering: false, tab: "sources" };
 
+// project.phase is the highest completed phase (Phase 1 done -> phase 1).
+// Step 0 （資料） counts as done once any later phase has run.
+function stepsHtml(phase) {
+  let currentAssigned = false;
+  return PHASES.map((label, i) => {
+    const done = i === 0 ? phase >= 1 : phase >= i;
+    let cls = "";
+    if (done) cls = " done";
+    else if (!currentAssigned) { cls = " current"; currentAssigned = true; }
+    return '<div class="cb-step' + cls + '">' + label + "</div>";
+  }).join("");
+}
+
 function showError(message) {
   const el = $("#cb-error");
   el.textContent = message || "";
@@ -160,9 +174,7 @@ async function loadProjects() {
     card.innerHTML =
       '<div class="cb-card-body">' +
       '<h3 class="fd-title fd-title--h3">' + esc(project.name) + "</h3>" +
-      '<div class="cb-steps">' + PHASES.map((label, i) =>
-        '<div class="cb-step' + (project.phase > i ? " done" : project.phase === i ? " current" : "") + '">' + label + "</div>"
-      ).join("") + "</div>" +
+      '<div class="cb-steps">' + stepsHtml(project.phase) + "</div>" +
       (gapCount > 0 ? '<span class="fd-object-status fd-object-status--negative">未解消の穴 ' + gapCount + "</span>" : "") +
       "</div>";
     card.addEventListener("click", () => openProject(project.id));
@@ -203,10 +215,7 @@ async function openProject(id) {
 }
 
 function renderSteps() {
-  const phase = state.project.phase;
-  $("#phase-steps").innerHTML = PHASES.map((label, i) =>
-    '<div class="cb-step' + (phase > i ? " done" : phase === i ? " current" : "") + '">' + label + "</div>"
-  ).join("");
+  $("#phase-steps").innerHTML = stepsHtml(state.project.phase);
 }
 
 $("#btn-back").addEventListener("click", () => {
@@ -281,9 +290,16 @@ $("#form-source").addEventListener("submit", async (ev) => {
 /* ---------- skeleton (Phase 1) ---------- */
 
 function citesHtml(citations) {
-  return (citations || []).map((c) =>
-    '<span class="cb-cite">' + esc(c.chapter || c.source_title || "") + "</span>"
-  ).join("");
+  const seen = new Set();
+  return (citations || [])
+    .map((c) => c.chapter || c.source_title || "")
+    .filter((label) => {
+      if (!label || seen.has(label)) return false;
+      seen.add(label);
+      return true;
+    })
+    .map((label) => '<span class="cb-cite">' + esc(label) + "</span>")
+    .join("");
 }
 
 async function loadMap() {
