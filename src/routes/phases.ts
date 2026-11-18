@@ -548,12 +548,36 @@ function resolveCitations(
  * raw UUIDs, which silently breaks citation matching.
  */
 function buildPhase1Messages(chunks: GroundedChunk[]) {
-  const corpus = chunks
-    .map(
-      (chunk, i) =>
-        `[C${i + 1}] ${chunk.chapter ?? chunk.source_title}\n${chunk.text}`,
+  // Group chunks by source under a heading per source, so the model sees the
+  // corpus structure instead of one flat stream. A flat stream lets the
+  // model quietly ignore whole sources that were retrieved for coverage.
+  interface Group {
+    heading: string;
+    items: { label: string; text: string }[];
+  }
+  const groups: Group[] = [];
+  const groupBySource = new Map<string, Group>();
+  chunks.forEach((chunk, i) => {
+    let group = groupBySource.get(chunk.source_id);
+    if (!group) {
+      group = { heading: chunk.chapter ?? chunk.source_title, items: [] };
+      groupBySource.set(chunk.source_id, group);
+      groups.push(group);
+    }
+    group.items.push({ label: `C${i + 1}`, text: chunk.text });
+  });
+  const corpus = groups
+    .map((group) =>
+      [
+        `=== ${group.heading} ===`,
+        ...group.items.map((item) => `[${item.label}]\n${item.text}`),
+      ].join("\n\n"),
     )
     .join("\n\n");
+  const coverage =
+    groups.length > 1
+      ? `\n資料は次の${groups.length}つの部分から構成される。骨格は資料全体を覆うものでなければならない。各部分の中核概念を最低1つはノードに含め、特定の部分だけに偏らないこと。\n${groups.map((group) => `- ${group.heading}`).join("\n")}\n`
+      : "";
   return [
     {
       role: "system" as const,
@@ -563,8 +587,8 @@ function buildPhase1Messages(chunks: GroundedChunk[]) {
     {
       role: "user" as const,
       content: `質問：${PHASE1_QUESTION}
-
-資料チャンク（各チャンクは [ラベル] 章パス の見出し付き）:
+${coverage}
+資料チャンク（=== の見出しが資料の部分の区切り、各チャンクは [ラベル] 付き）:
 
 ${corpus}
 
@@ -580,7 +604,7 @@ ${corpus}
 citations にはチャンクのラベル（C1、C2 など）をそのまま書くこと。
 layer: foundation=他の概念の前提になる土台、core=中核、branch=応用・派生の枝葉。
 relation: prerequisite=fromがtoの前提、causal=fromがtoに因果的に影響する、contrast=対比、part_of=fromがtoの一部。
-ノードは5〜20個に絞ること。edges の from/to は nodes の name と完全に一致させること。`,
+ノードは5〜25個に絞ること。edges の from/to は nodes の name と完全に一致させること。`,
     },
   ];
 }
@@ -808,12 +832,24 @@ phases.post("/:id/phases/1", async (c) => {
       .bind(projectId),
   ]);
 
+  const sourceByChunk = new Map(
+    chunks.map((chunk) => [chunk.id, chunk.source_id]),
+  );
+  const citedSources = new Set<string>();
+  for (const item of [...nodes, ...edges]) {
+    for (const id of item.citations) {
+      const sourceId = sourceByChunk.get(id);
+      if (sourceId) citedSources.add(sourceId);
+    }
+  }
+
   const map = await readMap(c.env, projectId);
   return c.json({
     map,
     meta: {
       chunks_used: chunks.length,
       sources_used: new Set(chunks.map((chunk) => chunk.source_id)).size,
+      sources_cited: citedSources.size,
       dropped_nodes: droppedNodes,
       dropped_edges: droppedEdges,
     },
