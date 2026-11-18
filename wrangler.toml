@@ -8,7 +8,7 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "closedbook"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "4f346e54-4641-4a9f-9aa1-9829fc1527eb"
 
 # --- R2: original source files (textbooks, papers, slides) ---
 # Create with: wrangler r2 bucket create closedbook-sources
