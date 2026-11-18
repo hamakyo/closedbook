@@ -2,6 +2,11 @@ name = "closedbook"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# The UI is a single HTML file served by the Worker itself.
+rules = [
+  { type = "Text", globs = ["**/*.html"], fallthrough = true }
+]
+
 # --- D1: relational data (projects, questions, attempts, grades, gaps) ---
 # Create with: wrangler d1 create closedbook
 # Then replace database_id with the real one.

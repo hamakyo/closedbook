@@ -2,10 +2,13 @@ import { Hono } from "hono";
 import type { Env } from "./env";
 import { projects } from "./routes/projects";
 import { phases } from "./routes/phases";
+import uiHtml from "./ui.html";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/", (c) =>
+app.get("/", (c) => c.html(uiHtml));
+
+app.get("/api", (c) =>
   c.json({
     name: "closedbook",
     status: "scaffold",
