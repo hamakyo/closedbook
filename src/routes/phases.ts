@@ -12,7 +12,7 @@ import { chatJSON, embed } from "../lib/llm";
  *                             what is missing and what is shallow
  *   Phase 4  gaps          -> tracked understanding gaps + retests
  *
- * Phase 0 and Phase 1 are implemented; the rest remain stubs (501).
+ * Phase 0, Phase 1 and Phase 2 are implemented; the rest remain stubs (501).
  * See docs/design-memo.md for the spec.
  */
 export const phases = new Hono<{ Bindings: Env }>();
@@ -460,6 +460,7 @@ interface StoredEdge {
 async function gatherChunks(
   env: Env,
   projectId: string,
+  queries: string[] = RETRIEVAL_QUERIES,
 ): Promise<GroundedChunk[]> {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.source_id, c.idx, c.text, c.chapter, s.title AS source_title
@@ -472,7 +473,7 @@ async function gatherChunks(
     .all<GroundedChunk>();
   if (results.length <= ALL_CHUNKS_LIMIT) return results;
 
-  const queryVectors = await embed(env, RETRIEVAL_QUERIES);
+  const queryVectors = await embed(env, queries);
   const scores = new Map<string, number>();
   for (const vector of queryVectors) {
     const matches = await env.VECTORIZE.query(vector, {
@@ -547,16 +548,19 @@ function resolveCitations(
  * prompt. Models copy short labels reliably; at corpus scale they mangle
  * raw UUIDs, which silently breaks citation matching.
  */
-function buildPhase1Messages(chunks: GroundedChunk[]) {
-  // Group chunks by source under a heading per source, so the model sees the
-  // corpus structure instead of one flat stream. A flat stream lets the
-  // model quietly ignore whole sources that were retrieved for coverage.
-  interface Group {
-    heading: string;
-    items: { label: string; text: string }[];
-  }
-  const groups: Group[] = [];
-  const groupBySource = new Map<string, Group>();
+interface CorpusGroup {
+  heading: string;
+  items: { label: string; text: string }[];
+}
+
+/**
+ * Group chunks by source under a heading per source, so the model sees the
+ * corpus structure instead of one flat stream. A flat stream lets the model
+ * quietly ignore whole sources that were retrieved for coverage.
+ */
+function groupChunks(chunks: GroundedChunk[]): CorpusGroup[] {
+  const groups: CorpusGroup[] = [];
+  const groupBySource = new Map<string, CorpusGroup>();
   chunks.forEach((chunk, i) => {
     let group = groupBySource.get(chunk.source_id);
     if (!group) {
@@ -566,7 +570,11 @@ function buildPhase1Messages(chunks: GroundedChunk[]) {
     }
     group.items.push({ label: `C${i + 1}`, text: chunk.text });
   });
-  const corpus = groups
+  return groups;
+}
+
+function corpusText(groups: CorpusGroup[]): string {
+  return groups
     .map((group) =>
       [
         `=== ${group.heading} ===`,
@@ -574,6 +582,11 @@ function buildPhase1Messages(chunks: GroundedChunk[]) {
       ].join("\n\n"),
     )
     .join("\n\n");
+}
+
+function buildPhase1Messages(chunks: GroundedChunk[]) {
+  const groups = groupChunks(chunks);
+  const corpus = corpusText(groups);
   const coverage =
     groups.length > 1
       ? `\n資料は次の${groups.length}つの部分から構成される。骨格は資料全体を覆うものでなければならない。各部分の中核概念を最低1つはノードに含め、特定の部分だけに偏らないこと。\n${groups.map((group) => `- ${group.heading}`).join("\n")}\n`
@@ -869,16 +882,308 @@ phases.get("/:id/phases/1", async (c) => {
   return c.json({ map });
 });
 
-// Phase 2: detect real controversies across sources. If none exist in the
-// sources, return none. Never fabricate disagreements.
-phases.post("/:id/phases/2", (c) =>
-  c.json(
-    notImplemented(
-      "detect conflicting claims across sources, save controversies with positions and citations",
+// ---------------------------------------------------------------------------
+// Phase 2: controversies. Detection first (design memo §5): find claims in
+// the sources that genuinely conflict, then structure them as cards with
+// positions, evidence, and rebuttals. The anti-fabrication rule is a design
+// principle (§2): a controversy is stored only when at least two positions
+// each cite the provided chunks. When nothing real is found, the honest
+// result is an empty list, stored as such — never invented disagreements.
+// ---------------------------------------------------------------------------
+
+const PHASE2_QUESTION =
+  "この分野で現在、根本的な論争が3つあるとしたら、それぞれ何？ それぞれの立場の見解、根拠、反対する理由を説明して";
+
+/** Retrieval facets for Phase 2: disagreements, criticism, trade-offs. */
+const PHASE2_QUERIES = [
+  PHASE2_QUESTION,
+  "対立する見解、批判と反論",
+  "トレードオフと、どちらを選ぶべきかの議論",
+  "欠点・限界・問題点の指摘",
+  "従来の手法への批判と、新しい提案",
+];
+
+const MAX_CONTROVERSIES = 3;
+const MAX_POSITIONS = 3;
+
+interface RawPosition {
+  stance?: unknown;
+  claims?: unknown;
+  evidence?: unknown;
+  rebuttal?: unknown;
+  citations?: unknown;
+}
+
+interface RawControversy {
+  topic?: unknown;
+  summary?: unknown;
+  unresolved_reason?: unknown;
+  positions?: RawPosition[];
+}
+
+interface RawControversies {
+  controversies?: RawControversy[];
+}
+
+interface StoredPosition {
+  stance: string;
+  claims: string | null;
+  evidence: string | null;
+  rebuttal: string | null;
+  citations: string[];
+}
+
+interface StoredControversy {
+  id: string;
+  topic: string;
+  summary: string | null;
+  unresolved: string | null;
+  positions: StoredPosition[];
+}
+
+function buildPhase2Messages(chunks: GroundedChunk[]) {
+  const groups = groupChunks(chunks);
+  const corpus = corpusText(groups);
+  const inventory =
+    groups.length > 1
+      ? `\n資料は次の${groups.length}つの部分から構成される。対立は部分どうしの間にも、部分の中にもありうる。\n${groups.map((group) => `- ${group.heading}`).join("\n")}\n`
+      : "";
+  return [
+    {
+      role: "system" as const,
+      content:
+        "あなたは学習支援システムの論争検出エンジンです。与えられた資料チャンクの中に実在する主張の対立だけを検出して、構造化JSONで出力します。資料に書かれていない対立を作り出してはいけません。一般知識で補いません。すべての立場には根拠となるチャンクのラベル（C1、C2 など）を citations に必ず含めます。対立が見つからない場合は空の配列を返すのが正しい出力です。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+    },
+    {
+      role: "user" as const,
+      content: `質問：${PHASE2_QUESTION}
+${inventory}
+検出の基準:
+- 論争とは、同じ対象について両立しない主張が資料の中に実際に述べられているものだけを指す
+- 立場は、資料の中で実際に主張・擁護されている見解だけにする。片側しか資料にない論点は論争にしない
+- 単なる用語の違いや、強調点の違いだけのものは対立ではない
+- 最大で3件まで。本当に根本的なものだけを選ぶ。3件に満たなくてもよいし、なければ0件でよい
+
+資料チャンク（=== の見出しが資料の部分の区切り、各チャンクは [ラベル] 付き）:
+
+${corpus}
+
+出力形式（JSON）:
+{
+  "controversies": [
+    {
+      "topic": "論点",
+      "summary": "対立の概要（1〜2文）",
+      "positions": [
+        {"stance": "立場の要約", "claims": "その立場の主張", "evidence": "資料に基づく根拠", "rebuttal": "相手の立場への反論", "citations": ["C1"]}
+      ],
+      "unresolved_reason": "なぜまだ決着していないか（資料から読み取れる範囲で）"
+    }
+  ]
+}
+citations にはチャンクのラベル（C1、C2 など）をそのまま書くこと。各立場に最低1つの引用が必須。`,
+    },
+  ];
+}
+
+function asText(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Validate detected controversies against the anti-fabrication rules. */
+function validateControversies(
+  raw: RawControversies,
+  chunks: GroundedChunk[],
+): { controversies: StoredControversy[]; dropped: number } {
+  const resolver = new Map<string, string>();
+  chunks.forEach((chunk, i) => {
+    resolver.set(`C${i + 1}`, chunk.id);
+    resolver.set(chunk.id, chunk.id);
+  });
+
+  const controversies: StoredControversy[] = [];
+  let dropped = 0;
+  for (const rawItem of Array.isArray(raw.controversies)
+    ? raw.controversies
+    : []) {
+    const topic = asText(rawItem.topic);
+    const positions: StoredPosition[] = [];
+    for (const rawPosition of Array.isArray(rawItem.positions)
+      ? rawItem.positions
+      : []) {
+      const stance = asText(rawPosition.stance);
+      const citations = resolveCitations(rawPosition.citations, resolver);
+      if (!stance || citations.length === 0) continue;
+      positions.push({
+        stance,
+        claims: asText(rawPosition.claims),
+        evidence: asText(rawPosition.evidence),
+        rebuttal: asText(rawPosition.rebuttal),
+        citations,
+      });
+      if (positions.length >= MAX_POSITIONS) break;
+    }
+    // A controversy needs a topic and at least two genuinely cited sides.
+    if (!topic || positions.length < 2) {
+      dropped += 1;
+      continue;
+    }
+    controversies.push({
+      id: crypto.randomUUID(),
+      topic,
+      summary: asText(rawItem.summary),
+      unresolved: asText(rawItem.unresolved_reason),
+      positions,
+    });
+    if (controversies.length >= MAX_CONTROVERSIES) break;
+  }
+  return { controversies, dropped };
+}
+
+async function readControversies(env: Env, projectId: string) {
+  const { results } = await env.DB.prepare(
+    "SELECT id, topic, summary, unresolved, positions FROM controversies WHERE project_id = ? ORDER BY created_at ASC",
+  )
+    .bind(projectId)
+    .all<{
+      id: string;
+      topic: string;
+      summary: string | null;
+      unresolved: string | null;
+      positions: string;
+    }>();
+
+  const allCitations = new Set<string>();
+  const parsed = results.map((row) => ({
+    ...row,
+    positions: JSON.parse(row.positions) as StoredPosition[],
+  }));
+  for (const row of parsed) {
+    for (const position of row.positions) {
+      for (const id of position.citations) allCitations.add(id);
+    }
+  }
+  const details = await citationDetails(env, [...allCitations]);
+  const resolve = (ids: string[]) =>
+    ids.map(
+      (id) =>
+        details.get(id) ?? { chunk_id: id, source_title: "", chapter: null },
+    );
+
+  return parsed.map((row) => ({
+    id: row.id,
+    topic: row.topic,
+    summary: row.summary,
+    unresolved: row.unresolved,
+    positions: row.positions.map((position) => ({
+      stance: position.stance,
+      claims: position.claims,
+      evidence: position.evidence,
+      rebuttal: position.rebuttal,
+      citations: resolve(position.citations),
+    })),
+  }));
+}
+
+// Phase 2: detect (or re-detect) the controversies in a project's sources.
+phases.post("/:id/phases/2", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id, phase FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string; phase: number }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+  if (project.phase < 1) {
+    return c.json(
+      {
+        error: "phase_order",
+        message: "Phase 2 requires Phase 1 (skeleton) to be completed first",
+      },
+      400,
+    );
+  }
+
+  const chunks = await gatherChunks(c.env, projectId, PHASE2_QUERIES);
+  if (chunks.length === 0) {
+    return c.json(
+      {
+        error: "no_sources",
+        message: "Phase 2 needs at least one ingested source (Phase 0) first",
+      },
+      400,
+    );
+  }
+
+  let raw: RawControversies;
+  try {
+    raw = await chatJSON<RawControversies>(
+      c.env,
+      buildPhase2Messages(chunks),
+    );
+  } catch (error) {
+    console.error("phase 2 detection failed", error);
+    return c.json(
+      { error: "phase2_detection_failed", message: errorMessage(error) },
+      502,
+    );
+  }
+
+  const { controversies, dropped } = validateControversies(raw, chunks);
+
+  // Re-running replaces the previous findings atomically. An empty result is
+  // a legitimate finding (no real disagreements in the sources) and is
+  // stored the same way: as none.
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare("DELETE FROM controversies WHERE project_id = ?")
+      .bind(projectId),
+    ...controversies.map((item) =>
+      c.env.DB
+        .prepare(
+          `INSERT INTO controversies (id, project_id, topic, summary, unresolved, positions)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          item.id,
+          projectId,
+          item.topic,
+          item.summary,
+          item.unresolved,
+          JSON.stringify(item.positions),
+        ),
     ),
-    501,
-  ),
-);
+    c.env.DB
+      .prepare(
+        "UPDATE projects SET phase = 2, updated_at = datetime('now') WHERE id = ? AND phase < 2",
+      )
+      .bind(projectId),
+  ]);
+
+  const stored = await readControversies(c.env, projectId);
+  return c.json({
+    controversies: stored,
+    meta: {
+      chunks_used: chunks.length,
+      sources_used: new Set(chunks.map((chunk) => chunk.source_id)).size,
+      found: stored.length,
+      dropped: dropped,
+    },
+  });
+});
+
+// Phase 2: read the stored controversies.
+phases.get("/:id/phases/2", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+  const controversies = await readControversies(c.env, projectId);
+  return c.json({ controversies });
+});
 
 // Phase 3a: generate 10 questions + model answers + rubrics.
 // Model answers stay server-side; the client receives questions only.

@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS controversies (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   topic      TEXT NOT NULL,
   summary    TEXT,
+  unresolved TEXT,
   positions  TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
