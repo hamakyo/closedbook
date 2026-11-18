@@ -1703,12 +1703,12 @@ ${answer}
 出力形式（JSON）:
 {
   "concept": "概念名",
-  "scores": {"観点の文言そのまま": 2},
+  "scores": {"1": 2, "2": 0},
   "missing_points": ["..."],
   "shallow_points": ["..."],
   "followup": "追い質問または null"
 }
-scores のキーはルーブリックの観点の文言をそのまま使うこと。`,
+scores のキーはルーブリックの観点の番号（"1", "2", ...）を使うこと。観点の文言をキーにしてはいけない。`,
     },
   ];
 }
@@ -1719,13 +1719,17 @@ function validateGrade(raw: RawGrade, rubric: string[]): StoredGrade {
       ? (raw.scores as Record<string, unknown>)
       : {};
   const scores: Record<string, number> = {};
-  for (const point of rubric) {
-    const value = rawScores[point];
+  rubric.forEach((point, i) => {
+    // Scores are keyed by viewpoint number: keying by the viewpoint text
+    // breaks whenever the model paraphrases a long viewpoint instead of
+    // echoing it verbatim (measured: an all-zero grade with no findings).
+    // The exact-text key is still accepted as a fallback.
+    const value = rawScores[String(i + 1)] ?? rawScores[point];
     scores[point] =
       typeof value === "number" && Number.isFinite(value)
         ? Math.min(2, Math.max(0, Math.round(value)))
         : 0;
-  }
+  });
   const textList = (value: unknown): string[] =>
     (Array.isArray(value) ? value : [])
       .map((item) => asText(item))
