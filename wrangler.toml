@@ -25,8 +25,10 @@ index_name = "closedbook-chunks"
 
 [vars]
 # BYOK: any OpenAI-compatible endpoint works (official APIs or gateways).
-LLM_BASE_URL = "https://api.openai.com/v1"
-LLM_MODEL = "gpt-4o"
+# Defaults below are the maintainer's reference setup (Sakura AI Engine);
+# point them at your own endpoint/model when self-hosting.
+LLM_BASE_URL = "https://api.ai.sakura.ad.jp/v1"
+LLM_MODEL = "preview/DeepSeek-V4.1-Flash-1017"
 EMBEDDING_MODEL = "multilingual-e5-large"
 # LLM_API_KEY is a secret. Never put it here.
 #   local: copy .dev.vars.example to .dev.vars
