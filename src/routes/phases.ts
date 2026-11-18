@@ -12,7 +12,7 @@ import { chatJSON, embed } from "../lib/llm";
  *                             what is missing and what is shallow
  *   Phase 4  gaps          -> tracked understanding gaps + retests
  *
- * Phase 0, Phase 1 and Phase 2 are implemented; the rest remain stubs (501).
+ * Phase 0 through Phase 3 are implemented; Phase 4 and 5 remain stubs (501).
  * See docs/design-memo.md for the spec.
  */
 export const phases = new Hono<{ Bindings: Env }>();
@@ -1397,28 +1397,482 @@ phases.get("/:id/phases/2", async (c) => {
   return c.json({ controversies });
 });
 
-// Phase 3a: generate 10 questions + model answers + rubrics.
-// Model answers stay server-side; the client receives questions only.
-phases.post("/:id/phases/3/questions", (c) =>
-  c.json(
-    notImplemented(
-      "generate questions covering concepts, causality, application, controversies; store model answers in D1 only",
-    ),
-    501,
-  ),
-);
+// ---------------------------------------------------------------------------
+// Phase 3: the test. Questions are generated from the skeleton (Phase 1)
+// and the controversies (Phase 2), grounded in the source chunks. Model
+// answers and rubrics are stored server-side only: no endpoint returns
+// them before the attempt is graded (design memo §2, 資料ロック). Grading
+// looks for what is missing and what is shallow rather than right/wrong,
+// and opens a gap (Phase 4 material) for each question with findings.
+// ---------------------------------------------------------------------------
 
-// Phase 3b: submit an answer. The client must have sources locked
-// (closed book). Grading returns missing points and shallow points,
-// and records new gaps.
-phases.post("/:id/phases/3/grade", (c) =>
-  c.json(
-    notImplemented(
-      "grade one attempt against its rubric and model answer; save grade; open gaps for missing/shallow points",
+const PHASE3_QUESTION =
+  "この分野を理解しているか測るテスト問題を10問作って。各問に模範解答と採点ルーブリックを付けて";
+
+const PHASE3_QUERIES = [
+  PHASE3_QUESTION,
+  "中核概念とその定義・仕組み",
+  "因果関係と仕組みの連鎖",
+  "実務・応用場面での判断",
+  "論争・トレードオフへの理解",
+];
+
+const QUESTION_COUNT = 10;
+const QUESTION_TAGS = new Set([
+  "concept",
+  "causal",
+  "application",
+  "controversy",
+]);
+
+interface RawQuestion {
+  body?: unknown;
+  tag?: unknown;
+  model_answer?: unknown;
+  rubric?: unknown;
+  citations?: unknown;
+}
+
+interface RawQuestions {
+  questions?: RawQuestion[];
+}
+
+interface StoredQuestion {
+  id: string;
+  body: string;
+  tag: string;
+  model_answer: string;
+  rubric: string[];
+}
+
+function buildPhase3Messages(
+  chunks: GroundedChunk[],
+  map: Awaited<ReturnType<typeof readMap>>,
+  controversies: Awaited<ReturnType<typeof readControversies>>,
+) {
+  const groups = groupChunks(chunks);
+  const corpus = corpusText(groups);
+  const skeleton = map.nodes
+    .map((node) => `- [${node.layer}] ${node.name}: ${node.description ?? ""}`)
+    .join("\n");
+  const debates = controversies
+    .map(
+      (item) =>
+        `- ${item.topic}: ${item.positions.map((p) => p.stance).join(" ／ ")}`,
+    )
+    .join("\n");
+  const distribution =
+    controversies.length > 0
+      ? "タグの配分は concept（概念）4問、causal（因果）3問、application（応用）2問、controversy（論争）1問とすること。controversy の問題は検出済みの論争から作ること。"
+      : "タグの配分は concept（概念）5問、causal（因果）3問、application（応用）2問とすること（この資料では論争が検出されなかったため controversy は出さない）。";
+  return [
+    {
+      role: "system" as const,
+      content:
+        "あなたは学習支援システムの出題エンジンです。与えられた資料チャンクと骨格マップだけに基づいて、理解を測るテスト問題を作成します。資料に書かれていないことは問題にも模範解答にも入れません。一般知識で補いません。各問題には根拠となるチャンクのラベル（C1、C2 など）を citations に必ず含めます。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+    },
+    {
+      role: "user" as const,
+      content: `課題：${PHASE3_QUESTION}
+
+骨格マップ（Phase 1）:
+${skeleton || "（なし）"}
+
+検出済みの論争（Phase 2）:
+${debates || "（なし）"}
+
+出題の基準:
+- 暗記ではなく理解を測る問題にする。「〜とは何か」だけで終わらせず、仕組み・理由・使い分け・判断を問う
+- ${distribution}
+- 模範解答は資料に基づいて完結に書き、採点ルーブリックは「解答に含まれているべき観点」を3〜5個、短い句で列挙する
+- 問題文だけで答えが推測できるような誘導はしない
+
+資料チャンク（=== の見出しが資料の部分の区切り、各チャンクは [ラベル] 付き）:
+
+${corpus}
+
+出力形式（JSON）:
+{
+  "questions": [
+    {"body": "問題文", "tag": "concept" | "causal" | "application" | "controversy", "model_answer": "模範解答", "rubric": ["観点1", "観点2", "観点3"], "citations": ["C1"]}
+  ]
+}
+ちょうど${QUESTION_COUNT}問を出力すること。citations にはチャンクのラベル（C1、C2 など）をそのまま書くこと。`,
+    },
+  ];
+}
+
+function validateQuestions(
+  raw: RawQuestions,
+  chunks: GroundedChunk[],
+): { questions: StoredQuestion[]; dropped: number } {
+  const resolver = new Map<string, string>();
+  chunks.forEach((chunk, i) => {
+    resolver.set(`C${i + 1}`, chunk.id);
+    resolver.set(chunk.id, chunk.id);
+  });
+  const questions: StoredQuestion[] = [];
+  let dropped = 0;
+  for (const rawItem of Array.isArray(raw.questions) ? raw.questions : []) {
+    const body = asText(rawItem.body);
+    const modelAnswer = asText(rawItem.model_answer);
+    const rubric = (Array.isArray(rawItem.rubric) ? rawItem.rubric : [])
+      .map((item) => asText(item))
+      .filter((item): item is string => item !== null)
+      .slice(0, 6);
+    const citations = resolveCitations(rawItem.citations, resolver);
+    if (!body || !modelAnswer || rubric.length < 2 || citations.length === 0) {
+      dropped += 1;
+      continue;
+    }
+    questions.push({
+      id: crypto.randomUUID(),
+      body,
+      tag:
+        typeof rawItem.tag === "string" && QUESTION_TAGS.has(rawItem.tag)
+          ? rawItem.tag
+          : "concept",
+      model_answer: modelAnswer,
+      rubric,
+    });
+    if (questions.length >= QUESTION_COUNT) break;
+  }
+  return { questions, dropped };
+}
+
+// Phase 3a: generate (or regenerate) the 10 test questions for a project.
+// The response contains the questions only — never model answers or rubrics.
+phases.post("/:id/phases/3/questions", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id, phase FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string; phase: number }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+  if (project.phase < 2) {
+    return c.json(
+      {
+        error: "phase_order",
+        message:
+          "Phase 3 requires Phase 1 (skeleton) and Phase 2 (controversies) first",
+      },
+      400,
+    );
+  }
+
+  const chunks = await gatherChunks(c.env, projectId, PHASE3_QUERIES);
+  if (chunks.length === 0) {
+    return c.json(
+      {
+        error: "no_sources",
+        message: "Phase 3 needs at least one ingested source (Phase 0) first",
+      },
+      400,
+    );
+  }
+  const map = await readMap(c.env, projectId);
+  const controversies = await readControversies(c.env, projectId);
+
+  let raw: RawQuestions;
+  try {
+    raw = await chatJSON<RawQuestions>(
+      c.env,
+      buildPhase3Messages(chunks, map, controversies),
+    );
+  } catch (error) {
+    console.error("phase 3 question generation failed", error);
+    return c.json(
+      { error: "phase3_generation_failed", message: errorMessage(error) },
+      502,
+    );
+  }
+
+  const { questions, dropped } = validateQuestions(raw, chunks);
+  if (questions.length === 0) {
+    return c.json(
+      {
+        error: "phase3_no_grounded_questions",
+        message:
+          "The model returned no question with a valid citation to the provided chunks; nothing was stored",
+      },
+      502,
+    );
+  }
+
+  // Regenerating replaces the previous set (attempts cascade-delete).
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare("DELETE FROM questions WHERE project_id = ?")
+      .bind(projectId),
+    ...questions.map((question) =>
+      c.env.DB
+        .prepare(
+          `INSERT INTO questions (id, project_id, body, tag, model_answer, rubric)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          question.id,
+          projectId,
+          question.body,
+          question.tag,
+          question.model_answer,
+          JSON.stringify(question.rubric),
+        ),
     ),
-    501,
-  ),
-);
+  ]);
+
+  return c.json({
+    questions: questions.map((question) => ({
+      id: question.id,
+      body: question.body,
+      tag: question.tag,
+    })),
+    meta: {
+      chunks_used: chunks.length,
+      stored: questions.length,
+      dropped,
+    },
+  });
+});
+
+// Phase 3a (read): the stored questions, again without answers or rubrics.
+phases.get("/:id/phases/3/questions", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, body, tag FROM questions WHERE project_id = ? ORDER BY rowid ASC",
+  )
+    .bind(projectId)
+    .all<{ id: string; body: string; tag: string }>();
+  return c.json({ questions: results });
+});
+
+interface RawGrade {
+  concept?: unknown;
+  scores?: unknown;
+  missing_points?: unknown;
+  shallow_points?: unknown;
+  followup?: unknown;
+}
+
+interface StoredGrade {
+  concept: string;
+  scores: Record<string, number>;
+  missing_points: string[];
+  shallow_points: string[];
+  followup: string | null;
+}
+
+function buildGradeMessages(
+  question: { body: string; model_answer: string; rubric: string[] },
+  answer: string,
+) {
+  return [
+    {
+      role: "system" as const,
+      content:
+        "あなたは学習支援システムの採点エンジンです。模範解答とルーブリックの観点に照らしてユーザーの回答を採点します。正解か不正解かの二分ではなく、何が欠けているか（不足）と、触れてはいるが浅いか（浅さ）を特定することが目的です。模範解答にない基準を持ち込んではいけません。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+    },
+    {
+      role: "user" as const,
+      content: `問題:
+${question.body}
+
+模範解答:
+${question.model_answer}
+
+ルーブリック（採点の観点）:
+${question.rubric.map((point, i) => `${i + 1}. ${point}`).join("\n")}
+
+ユーザーの回答:
+${answer}
+
+採点の基準:
+- 各観点を 2（十分に言及され正確）／1（触れているが浅い、または一部不正確）／0（欠落、または誤り）で採点する
+- missing_points には、回答に欠けている重要な点を具体的に書く
+- shallow_points には、触れてはいるが理由や仕組みまで届いていない点を書く
+- shallow_points がある場合、理解を一段深める「なぜ？」「もし〜だったら？」形式の追い質問を1つだけ followup に書く。なければ null
+- concept には、この問題が測っている概念の短い名前を書く
+
+出力形式（JSON）:
+{
+  "concept": "概念名",
+  "scores": {"観点の文言そのまま": 2},
+  "missing_points": ["..."],
+  "shallow_points": ["..."],
+  "followup": "追い質問または null"
+}
+scores のキーはルーブリックの観点の文言をそのまま使うこと。`,
+    },
+  ];
+}
+
+function validateGrade(raw: RawGrade, rubric: string[]): StoredGrade {
+  const rawScores =
+    raw.scores && typeof raw.scores === "object"
+      ? (raw.scores as Record<string, unknown>)
+      : {};
+  const scores: Record<string, number> = {};
+  for (const point of rubric) {
+    const value = rawScores[point];
+    scores[point] =
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.min(2, Math.max(0, Math.round(value)))
+        : 0;
+  }
+  const textList = (value: unknown): string[] =>
+    (Array.isArray(value) ? value : [])
+      .map((item) => asText(item))
+      .filter((item): item is string => item !== null)
+      .slice(0, 6);
+  return {
+    concept: asText(raw.concept) ?? "",
+    scores,
+    missing_points: textList(raw.missing_points),
+    shallow_points: textList(raw.shallow_points),
+    followup: asText(raw.followup),
+  };
+}
+
+// Phase 3b: submit one answer written under source lock, grade it against
+// the stored rubric and model answer, and open a gap when the grade finds
+// missing or shallow points. The model answer is revealed in the response
+// — after grading, never before.
+phases.post("/:id/phases/3/grade", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+
+  let payload: { question_id?: unknown; answer?: unknown };
+  try {
+    payload = (await c.req.json()) as typeof payload;
+  } catch {
+    return c.json({ error: "invalid_body", message: "JSON body required" }, 400);
+  }
+  const questionId =
+    typeof payload.question_id === "string" ? payload.question_id : "";
+  const answer = asText(payload.answer);
+  if (!questionId || !answer) {
+    return c.json(
+      {
+        error: "invalid_body",
+        message: "question_id and a non-empty answer are required",
+      },
+      400,
+    );
+  }
+
+  const question = await c.env.DB.prepare(
+    "SELECT id, body, tag, model_answer, rubric FROM questions WHERE id = ? AND project_id = ?",
+  )
+    .bind(questionId, projectId)
+    .first<{
+      id: string;
+      body: string;
+      tag: string;
+      model_answer: string;
+      rubric: string;
+    }>();
+  if (!question) return c.json({ error: "question not found" }, 404);
+  const rubric = JSON.parse(question.rubric) as string[];
+
+  const attemptId = crypto.randomUUID();
+  await c.env.DB.prepare(
+    "INSERT INTO attempts (id, question_id, project_id, answer, locked) VALUES (?, ?, ?, ?, 1)",
+  )
+    .bind(attemptId, question.id, projectId, answer)
+    .run();
+
+  let rawGrade: RawGrade;
+  try {
+    rawGrade = await chatJSON<RawGrade>(
+      c.env,
+      buildGradeMessages(
+        { body: question.body, model_answer: question.model_answer, rubric },
+        answer,
+      ),
+    );
+  } catch (error) {
+    console.error("phase 3 grading failed", error);
+    return c.json(
+      { error: "phase3_grading_failed", message: errorMessage(error) },
+      502,
+    );
+  }
+  const grade = validateGrade(rawGrade, rubric);
+  const concept = grade.concept || question.body.slice(0, 60);
+  const gradeId = crypto.randomUUID();
+
+  const statements: D1PreparedStatement[] = [
+    c.env.DB
+      .prepare(
+        `INSERT INTO grades (id, attempt_id, scores, missing_points, shallow_points, followup)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        gradeId,
+        attemptId,
+        JSON.stringify(grade.scores),
+        JSON.stringify(grade.missing_points),
+        JSON.stringify(grade.shallow_points),
+        grade.followup,
+      ),
+    c.env.DB
+      .prepare(
+        "UPDATE projects SET phase = 3, updated_at = datetime('now') WHERE id = ? AND phase < 3",
+      )
+      .bind(projectId),
+  ];
+
+  // Open a gap for Phase 4 when the grade found anything missing or
+  // shallow, unless the same concept is already tracked as open.
+  let gapOpened = false;
+  if (grade.missing_points.length > 0 || grade.shallow_points.length > 0) {
+    const existing = await c.env.DB.prepare(
+      "SELECT id FROM gaps WHERE project_id = ? AND concept = ? AND status = 'open'",
+    )
+      .bind(projectId, concept)
+      .first<{ id: string }>();
+    if (!existing) {
+      const detail = [
+        ...grade.missing_points.map((point) => `不足: ${point}`),
+        ...grade.shallow_points.map((point) => `浅さ: ${point}`),
+      ].join("\n");
+      statements.push(
+        c.env.DB
+          .prepare(
+            `INSERT INTO gaps (id, project_id, concept, detail, status, origin_grade_id)
+             VALUES (?, ?, ?, ?, 'open', ?)`,
+          )
+          .bind(crypto.randomUUID(), projectId, concept, detail, gradeId),
+      );
+      gapOpened = true;
+    }
+  }
+  await c.env.DB.batch(statements);
+
+  return c.json({
+    attempt_id: attemptId,
+    grade: {
+      scores: grade.scores,
+      missing_points: grade.missing_points,
+      shallow_points: grade.shallow_points,
+      followup: grade.followup,
+    },
+    model_answer: question.model_answer,
+    gap_opened: gapOpened,
+  });
+});
 
 // Phase 4: list open gaps for a project; a gap closes only via a retest.
 phases.get("/:id/gaps", (c) =>
