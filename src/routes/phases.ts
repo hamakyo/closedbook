@@ -457,12 +457,12 @@ interface StoredEdge {
  * overall. Without the floor, one long or well-matching source can crowd out
  * the rest of the field and the skeleton silently loses whole chapters.
  */
-async function gatherChunks(
+/** All chunk rows of a project plus a best-score lookup for the queries. */
+async function scoreChunks(
   env: Env,
   projectId: string,
-  queries: string[] = RETRIEVAL_QUERIES,
-  selectionCap: number = SELECTION_CAP,
-): Promise<GroundedChunk[]> {
+  queries: string[],
+): Promise<{ rows: GroundedChunk[]; scoreOf: (row: GroundedChunk) => number }> {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.source_id, c.idx, c.text, c.chapter, s.title AS source_title
        FROM chunks c
@@ -472,24 +472,36 @@ async function gatherChunks(
   )
     .bind(projectId)
     .all<GroundedChunk>();
-  if (results.length <= ALL_CHUNKS_LIMIT) return results;
 
-  const queryVectors = await embed(env, queries);
   const scores = new Map<string, number>();
-  for (const vector of queryVectors) {
-    const matches = await env.VECTORIZE.query(vector, {
-      topK: 100,
-      returnMetadata: "none",
-    });
-    for (const match of matches.matches) {
-      const previous = scores.get(match.id);
-      if (previous === undefined || match.score > previous) {
-        scores.set(match.id, match.score);
+  if (results.length > ALL_CHUNKS_LIMIT) {
+    const queryVectors = await embed(env, queries);
+    for (const vector of queryVectors) {
+      const matches = await env.VECTORIZE.query(vector, {
+        topK: 100,
+        returnMetadata: "none",
+      });
+      for (const match of matches.matches) {
+        const previous = scores.get(match.id);
+        if (previous === undefined || match.score > previous) {
+          scores.set(match.id, match.score);
+        }
       }
     }
   }
   // Chunks no query surfaced rank below every scored chunk.
   const scoreOf = (row: GroundedChunk): number => scores.get(row.id) ?? -1;
+  return { rows: results, scoreOf };
+}
+
+async function gatherChunks(
+  env: Env,
+  projectId: string,
+  queries: string[] = RETRIEVAL_QUERIES,
+  selectionCap: number = SELECTION_CAP,
+): Promise<GroundedChunk[]> {
+  const { rows: results, scoreOf } = await scoreChunks(env, projectId, queries);
+  if (results.length <= ALL_CHUNKS_LIMIT) return results;
 
   const bySource = new Map<string, GroundedChunk[]>();
   for (const row of results) {
@@ -519,6 +531,43 @@ async function gatherChunks(
 
   // Keep the prompt in document order regardless of selection order.
   return results.filter((row) => selected.has(row.id));
+}
+
+/**
+ * Per-source selection for Phase 2: each source's own best-scoring chunks,
+ * in document order. Detection runs per source because a debate lives in a
+ * run of passages inside one source; a single mixed prompt over the whole
+ * corpus makes the model report only the loudest debate and miss the rest.
+ */
+async function gatherChunksBySource(
+  env: Env,
+  projectId: string,
+  queries: string[],
+  perSourceCap: number,
+): Promise<Map<string, GroundedChunk[]>> {
+  const { rows, scoreOf } = await scoreChunks(env, projectId, queries);
+  const bySource = new Map<string, GroundedChunk[]>();
+  for (const row of rows) {
+    const group = bySource.get(row.source_id);
+    if (group) group.push(row);
+    else bySource.set(row.source_id, [row]);
+  }
+  const selected = new Map<string, GroundedChunk[]>();
+  for (const [sourceId, group] of bySource) {
+    if (group.length <= perSourceCap) {
+      selected.set(sourceId, group);
+    } else {
+      const top = [...group]
+        .sort((a, b) => scoreOf(b) - scoreOf(a) || a.idx - b.idx)
+        .slice(0, perSourceCap);
+      const keep = new Set(top.map((row) => row.id));
+      selected.set(
+        sourceId,
+        group.filter((row) => keep.has(row.id)),
+      );
+    }
+  }
+  return selected;
 }
 
 /**
@@ -966,7 +1015,7 @@ ${inventory}
 - 教科書や解説書が「Aの支持者は〜と主張する」「一方でBでは〜」「批判者は〜と指摘する」のように両側の見解を紹介している場合、それも資料内に実在する論争として扱う。立場の文章が著者自身の主張である必要はない
 - ただし、資料が片側の見解しか述べていない論点は論争にしない。推測で反対側を作らない
 - 単なる用語の違いや、強調点の違いだけのものは対立ではない
-- 最大で3件まで。本当に根本的なものだけを選ぶ。3件に満たなくてもよいし、なければ0件でよい
+- この資料の部分から最大で2件まで。本当に根本的なものだけを選ぶ。なければ0件でよい
 
 資料チャンク（=== の見出しが資料の部分の区切り、各チャンクは [ラベル] 付き）:
 
@@ -998,6 +1047,7 @@ function asText(value: unknown): string | null {
 function validateControversies(
   raw: RawControversies,
   chunks: GroundedChunk[],
+  cap: number = MAX_CONTROVERSIES,
 ): { controversies: StoredControversy[]; dropped: number } {
   const resolver = new Map<string, string>();
   chunks.forEach((chunk, i) => {
@@ -1039,9 +1089,115 @@ function validateControversies(
       unresolved: asText(rawItem.unresolved_reason),
       positions,
     });
-    if (controversies.length >= MAX_CONTROVERSIES) break;
+    if (controversies.length >= cap) break;
   }
   return { controversies, dropped };
+}
+
+/**
+ * Merge step for Phase 2: per-source detection returns candidate cards;
+ * this call only selects and merges them into the final at-most-three.
+ * Citations travel as short K-labels over the union of cited chunks and
+ * are resolved back to chunk ids server-side, so the merge cannot invent
+ * grounding the candidates did not have.
+ */
+function buildPhase2MergeMessages(
+  candidates: StoredControversy[],
+  chunkById: Map<string, GroundedChunk>,
+): {
+  messages: { role: "system" | "user"; content: string }[];
+  labelOf: Map<string, string>;
+} {
+  const labelOf = new Map<string, string>();
+  const idByLabel = new Map<string, string>();
+  for (const candidate of candidates) {
+    for (const position of candidate.positions) {
+      for (const id of position.citations) {
+        if (!labelOf.has(id)) {
+          const label = `K${labelOf.size + 1}`;
+          labelOf.set(id, label);
+          idByLabel.set(label, id);
+        }
+      }
+    }
+  }
+  const legend = [...labelOf.entries()]
+    .map(([id, label]) => {
+      const chunk = chunkById.get(id);
+      return `${label}: ${chunk?.chapter ?? chunk?.source_title ?? ""}`;
+    })
+    .join("\n");
+  const cards = candidates
+    .map((candidate, i) => {
+      const positions = candidate.positions
+        .map(
+          (position) =>
+            `  - 立場: ${position.stance}\n    主張: ${position.claims ?? ""}\n    根拠: ${position.evidence ?? ""}\n    反論: ${position.rebuttal ?? ""}\n    引用: ${position.citations.map((id) => labelOf.get(id)).join(", ")}`,
+        )
+        .join("\n");
+      return `候補${i + 1}: ${candidate.topic}\n概要: ${candidate.summary ?? ""}\n未決着の理由: ${candidate.unresolved ?? ""}\n${positions}`;
+    })
+    .join("\n\n");
+  const messages = [
+    {
+      role: "system" as const,
+      content:
+        "あなたは学習支援システムの論争編集エンジンです。資料の部分ごとに検出された論争候補から、最終的な論争カードを選定・統合します。候補にない論点や立場を新しく作ってはいけません。引用は提示された K ラベルだけを使い、各立場に最低1つ付けます。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+    },
+    {
+      role: "user" as const,
+      content: `次の論争候補から、分野の理解にとって最も根本的なものを最大で3件選び、重複する論点は1件に統合して出力してください。統合した場合は両方の候補の引用を残してください。
+
+引用ラベルの対応（ラベル: 出典の章）:
+${legend}
+
+${cards}
+
+出力形式（JSON）:
+{
+  "controversies": [
+    {
+      "topic": "論点",
+      "summary": "対立の概要（1〜2文）",
+      "positions": [
+        {"stance": "立場の要約", "claims": "その立場の主張", "evidence": "資料に基づく根拠", "rebuttal": "相手の立場への反論", "citations": ["K1"]}
+      ],
+      "unresolved_reason": "なぜまだ決着していないか"
+    }
+  ]
+}`,
+    },
+  ];
+  return { messages, labelOf: idByLabel };
+}
+
+/** Rewrite K-label citations in a merge result back to chunk ids. */
+function resolveMergeCitations(
+  raw: RawControversies,
+  idByLabel: Map<string, string>,
+): RawControversies {
+  const mapCitations = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map((item) =>
+          typeof item === "string" && idByLabel.has(item)
+            ? idByLabel.get(item)
+            : item,
+        )
+      : value;
+  return {
+    controversies: (Array.isArray(raw.controversies)
+      ? raw.controversies
+      : []
+    ).map((item) => ({
+      ...item,
+      positions: (Array.isArray(item.positions) ? item.positions : []).map(
+        (position) => ({
+          ...position,
+          citations: mapCitations(position.citations),
+        }),
+      ),
+    })),
+  };
 }
 
 async function readControversies(env: Env, projectId: string) {
@@ -1108,12 +1264,14 @@ phases.post("/:id/phases/2", async (c) => {
     );
   }
 
-  // Controversy detection needs denser per-source coverage than the
-  // skeleton does: a debate lives in a run of passages inside one source,
-  // and a shallow floor hands the model summaries instead. 96 chunks with
-  // a floor of 8+ per source still fits the prompt budget comfortably.
-  const chunks = await gatherChunks(c.env, projectId, PHASE2_QUERIES, 96);
-  if (chunks.length === 0) {
+  const bySource = await gatherChunksBySource(
+    c.env,
+    projectId,
+    PHASE2_QUERIES,
+    16,
+  );
+  const allChunks = [...bySource.values()].flat();
+  if (allChunks.length === 0) {
     return c.json(
       {
         error: "no_sources",
@@ -1122,22 +1280,66 @@ phases.post("/:id/phases/2", async (c) => {
       400,
     );
   }
+  const chunkById = new Map(allChunks.map((chunk) => [chunk.id, chunk]));
 
-  let raw: RawControversies;
-  try {
-    raw = await chatJSON<RawControversies>(
-      c.env,
-      buildPhase2Messages(chunks),
+  // Detection runs per source, a few sources at a time. One source failing
+  // must not sink the whole phase; it is counted and the rest still count.
+  const sourceChunks = [...bySource.values()];
+  const candidates: StoredControversy[] = [];
+  let sourcesFailed = 0;
+  for (let i = 0; i < sourceChunks.length; i += 3) {
+    const batch = sourceChunks.slice(i, i + 3);
+    const settled = await Promise.allSettled(
+      batch.map(async (chunks) => {
+        const raw = await chatJSON<RawControversies>(
+          c.env,
+          buildPhase2Messages(chunks),
+        );
+        return validateControversies(raw, chunks, 2).controversies;
+      }),
     );
-  } catch (error) {
-    console.error("phase 2 detection failed", error);
+    for (const result of settled) {
+      if (result.status === "fulfilled") candidates.push(...result.value);
+      else sourcesFailed += 1;
+    }
+  }
+  if (sourcesFailed === sourceChunks.length) {
     return c.json(
-      { error: "phase2_detection_failed", message: errorMessage(error) },
+      {
+        error: "phase2_detection_failed",
+        message: "controversy detection failed for every source",
+      },
       502,
     );
   }
 
-  const { controversies, dropped } = validateControversies(raw, chunks);
+  // Few enough candidates need no merge call; more go through selection.
+  let controversies: StoredControversy[];
+  let dropped = 0;
+  if (candidates.length <= MAX_CONTROVERSIES) {
+    controversies = candidates;
+  } else {
+    try {
+      const { messages, labelOf } = buildPhase2MergeMessages(
+        candidates,
+        chunkById,
+      );
+      const rawMerged = await chatJSON<RawControversies>(c.env, messages);
+      const resolved = resolveMergeCitations(rawMerged, labelOf);
+      const citedChunks = [...labelOf.values()]
+        .map((id) => chunkById.get(id))
+        .filter((chunk): chunk is GroundedChunk => chunk !== undefined);
+      const validated = validateControversies(resolved, citedChunks);
+      controversies = validated.controversies;
+      dropped = validated.dropped;
+    } catch (error) {
+      console.error("phase 2 merge failed", error);
+      return c.json(
+        { error: "phase2_detection_failed", message: errorMessage(error) },
+        502,
+      );
+    }
+  }
 
   // Re-running replaces the previous findings atomically. An empty result is
   // a legitimate finding (no real disagreements in the sources) and is
@@ -1172,8 +1374,10 @@ phases.post("/:id/phases/2", async (c) => {
   return c.json({
     controversies: stored,
     meta: {
-      chunks_used: chunks.length,
-      sources_used: new Set(chunks.map((chunk) => chunk.source_id)).size,
+      chunks_used: allChunks.length,
+      sources_used: bySource.size,
+      sources_failed: sourcesFailed,
+      candidates: candidates.length,
       found: stored.length,
       dropped: dropped,
     },
