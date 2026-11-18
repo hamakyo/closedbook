@@ -461,6 +461,7 @@ async function gatherChunks(
   env: Env,
   projectId: string,
   queries: string[] = RETRIEVAL_QUERIES,
+  selectionCap: number = SELECTION_CAP,
 ): Promise<GroundedChunk[]> {
   const { results } = await env.DB.prepare(
     `SELECT c.id, c.source_id, c.idx, c.text, c.chapter, s.title AS source_title
@@ -498,20 +499,20 @@ async function gatherChunks(
   }
 
   const selected = new Set<string>();
-  const floor = Math.max(1, Math.floor(SELECTION_CAP / bySource.size));
+  const floor = Math.max(1, Math.floor(selectionCap / bySource.size));
   for (const group of bySource.values()) {
     const ranked = [...group].sort(
       (a, b) => scoreOf(b) - scoreOf(a) || a.idx - b.idx,
     );
     for (const row of ranked.slice(0, floor)) selected.add(row.id);
   }
-  if (selected.size < SELECTION_CAP) {
+  if (selected.size < selectionCap) {
     // Stable sort: score ties keep document order (source order, then idx).
     const rest = results
       .filter((row) => !selected.has(row.id))
       .sort((a, b) => scoreOf(b) - scoreOf(a));
     for (const row of rest) {
-      if (selected.size >= SELECTION_CAP) break;
+      if (selected.size >= selectionCap) break;
       selected.add(row.id);
     }
   }
@@ -1107,7 +1108,11 @@ phases.post("/:id/phases/2", async (c) => {
     );
   }
 
-  const chunks = await gatherChunks(c.env, projectId, PHASE2_QUERIES);
+  // Controversy detection needs denser per-source coverage than the
+  // skeleton does: a debate lives in a run of passages inside one source,
+  // and a shallow floor hands the model summaries instead. 96 chunks with
+  // a floor of 8+ per source still fits the prompt budget comfortably.
+  const chunks = await gatherChunks(c.env, projectId, PHASE2_QUERIES, 96);
   if (chunks.length === 0) {
     return c.json(
       {
