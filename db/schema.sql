@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS questions (
   tag          TEXT NOT NULL DEFAULT 'concept', -- concept | causal | application | controversy
   model_answer TEXT NOT NULL,
   rubric       TEXT NOT NULL DEFAULT '[]', -- JSON: grading viewpoints
+  gap_id       TEXT REFERENCES gaps(id) ON DELETE CASCADE, -- set only for Phase 5 retest questions
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

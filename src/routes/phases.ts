@@ -12,7 +12,7 @@ import { chatJSON, embed } from "../lib/llm";
  *                             what is missing and what is shallow
  *   Phase 4  gaps          -> tracked understanding gaps + retests
  *
- * Phase 0 through Phase 3 are implemented; Phase 4 and 5 remain stubs (501).
+ * All phases (0 through 5) are implemented.
  * See docs/design-memo.md for the spec.
  */
 export const phases = new Hono<{ Bindings: Env }>();
@@ -1773,7 +1773,7 @@ phases.post("/:id/phases/3/grade", async (c) => {
   }
 
   const question = await c.env.DB.prepare(
-    "SELECT id, body, tag, model_answer, rubric FROM questions WHERE id = ? AND project_id = ?",
+    "SELECT id, body, tag, model_answer, rubric, gap_id FROM questions WHERE id = ? AND project_id = ?",
   )
     .bind(questionId, projectId)
     .first<{
@@ -1782,6 +1782,7 @@ phases.post("/:id/phases/3/grade", async (c) => {
       tag: string;
       model_answer: string;
       rubric: string;
+      gap_id: string | null;
     }>();
   if (!question) return c.json({ error: "question not found" }, 404);
   const rubric = JSON.parse(question.rubric) as string[];
@@ -1834,32 +1835,77 @@ phases.post("/:id/phases/3/grade", async (c) => {
       .bind(projectId),
   ];
 
-  // Open a gap for Phase 4 when the grade found anything missing or
-  // shallow, unless the same concept is already tracked as open.
+  const findingsDetail = () =>
+    [
+      ...grade.missing_points.map((point) => `不足: ${point}`),
+      ...grade.shallow_points.map((point) => `浅さ: ${point}`),
+    ].join("\n");
+
+  // A retest question (Phase 5) resolves its own gap instead of opening a
+  // new one: a clean pass closes the gap, anything else reopens it with
+  // the new findings. A pass means every rubric viewpoint scored 2 and
+  // nothing was missing or shallow.
+  let retest: { gap_id: string; passed: boolean } | null = null;
   let gapOpened = false;
-  if (grade.missing_points.length > 0 || grade.shallow_points.length > 0) {
+  if (question.gap_id) {
+    const passed =
+      grade.missing_points.length === 0 &&
+      grade.shallow_points.length === 0 &&
+      Object.values(grade.scores).every((score) => score === 2);
+    retest = { gap_id: question.gap_id, passed };
+    if (passed) {
+      statements.push(
+        c.env.DB
+          .prepare(
+            "UPDATE gaps SET status = 'closed', closed_at = datetime('now') WHERE id = ?",
+          )
+          .bind(question.gap_id),
+      );
+    } else {
+      statements.push(
+        c.env.DB
+          .prepare("UPDATE gaps SET status = 'open', detail = ? WHERE id = ?")
+          .bind(findingsDetail(), question.gap_id),
+      );
+    }
+  } else if (grade.missing_points.length > 0 || grade.shallow_points.length > 0) {
+    // Open a gap for Phase 4 when the grade found anything missing or
+    // shallow, unless the same concept is already tracked as open.
     const existing = await c.env.DB.prepare(
       "SELECT id FROM gaps WHERE project_id = ? AND concept = ? AND status = 'open'",
     )
       .bind(projectId, concept)
       .first<{ id: string }>();
     if (!existing) {
-      const detail = [
-        ...grade.missing_points.map((point) => `不足: ${point}`),
-        ...grade.shallow_points.map((point) => `浅さ: ${point}`),
-      ].join("\n");
       statements.push(
         c.env.DB
           .prepare(
             `INSERT INTO gaps (id, project_id, concept, detail, status, origin_grade_id)
              VALUES (?, ?, ?, ?, 'open', ?)`,
           )
-          .bind(crypto.randomUUID(), projectId, concept, detail, gradeId),
+          .bind(crypto.randomUUID(), projectId, concept, findingsDetail(), gradeId),
       );
       gapOpened = true;
     }
   }
   await c.env.DB.batch(statements);
+
+  // A pass that closed the last open gap completes the protocol.
+  if (retest?.passed) {
+    const remaining = await c.env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM gaps WHERE project_id = ? AND status != 'closed'",
+    )
+      .bind(projectId)
+      .first<{ n: number }>();
+    if (remaining && remaining.n === 0) {
+      await c.env.DB
+        .prepare(
+          "UPDATE projects SET phase = 5, updated_at = datetime('now') WHERE id = ? AND phase < 5",
+        )
+        .bind(projectId)
+        .run();
+    }
+  }
 
   return c.json({
     attempt_id: attemptId,
@@ -1871,10 +1917,252 @@ phases.post("/:id/phases/3/grade", async (c) => {
     },
     model_answer: question.model_answer,
     gap_opened: gapOpened,
+    ...(retest ? { retest } : {}),
   });
 });
 
-// Phase 4: list open gaps for a project; a gap closes only via a retest.
-phases.get("/:id/gaps", (c) =>
-  c.json(notImplemented("list gaps from D1 by status"), 501),
-);
+// ---------------------------------------------------------------------------
+// Phase 4: the gap list. Gaps are opened by Phase 3 grading and close only
+// through a passing Phase 5 retest — there is deliberately no endpoint
+// that closes a gap directly.
+// ---------------------------------------------------------------------------
+
+phases.get("/:id/gaps", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+
+  const status = c.req.query("status");
+  const filter =
+    status === "open" || status === "retesting" || status === "closed"
+      ? status
+      : null;
+  const { results } = await (filter
+    ? c.env.DB.prepare(
+        `SELECT id, concept, detail, status, origin_grade_id, created_at, closed_at
+           FROM gaps WHERE project_id = ? AND status = ? ORDER BY created_at ASC`,
+      )
+        .bind(projectId, filter)
+        .all()
+    : c.env.DB.prepare(
+        `SELECT id, concept, detail, status, origin_grade_id, created_at, closed_at
+           FROM gaps WHERE project_id = ? ORDER BY created_at ASC`,
+      )
+        .bind(projectId)
+        .all());
+  return c.json({ gaps: results });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5: retest. One new question per gap, aimed at exactly the points
+// the original grade found missing or shallow, asked from a different
+// angle than the original question. The question is stored like a Phase 3
+// question (answer and rubric server-side only) and linked to its gap;
+// the grade endpoint resolves the gap from that link.
+// ---------------------------------------------------------------------------
+
+const PHASE5_INSTRUCTION =
+  "前回のテストで不足していた観点だけを対象に、再テスト問題を作って。前回と違う角度から問うこと";
+
+function buildRetestMessages(
+  chunks: GroundedChunk[],
+  gap: { concept: string },
+  origin: {
+    questionBody: string | null;
+    missing: string[];
+    shallow: string[];
+  },
+) {
+  const groups = groupChunks(chunks);
+  const corpus = corpusText(groups);
+  return [
+    {
+      role: "system" as const,
+      content:
+        "あなたは学習支援システムの再テスト出題エンジンです。与えられた資料チャンクだけに基づいて、指定された理解の穴を測る問題を1問だけ作成します。資料に書かれていないことは問題にも模範解答にも入れません。一般知識で補いません。問題には根拠となるチャンクのラベル（C1、C2 など）を citations に必ず含めます。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+    },
+    {
+      role: "user" as const,
+      content: `課題：${PHASE5_INSTRUCTION}
+
+対象の概念：${gap.concept}
+${origin.questionBody ? `\n前回の問題（この問題と同じ角度では問わないこと）:\n${origin.questionBody}\n` : ""}
+前回の採点で不足していた点:
+${origin.missing.map((point) => `- ${point}`).join("\n") || "- （記録なし）"}
+
+前回の採点で浅いとされた点:
+${origin.shallow.map((point) => `- ${point}`).join("\n") || "- （記録なし）"}
+
+出題の基準:
+- 不足・浅さとして挙がった観点だけを対象にする。関係ない概念まで広げない
+- 前回の問題とは違う角度から問う。前回が理由を問う問題なら、今回は具体的な場面での判断や結果の予測を問う形にする
+- 模範解答とルーブリック（観点3〜5個）は Phase 3 と同じ形式で付ける
+
+資料チャンク（=== の見出しが資料の部分の区切り、各チャンクは [ラベル] 付き）:
+
+${corpus}
+
+出力形式（JSON）:
+{
+  "questions": [
+    {"body": "問題文", "tag": "concept" | "causal" | "application" | "controversy", "model_answer": "模範解答", "rubric": ["観点1", "観点2", "観点3"], "citations": ["C1"]}
+  ]
+}
+ちょうど1問を出力すること。citations にはチャンクのラベル（C1、C2 など）をそのまま書くこと。`,
+    },
+  ];
+}
+
+// Phase 5: generate the retest question for one open gap.
+phases.post("/:id/phases/5/retest", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare(
+    "SELECT id FROM projects WHERE id = ?",
+  )
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+
+  let payload: { gap_id?: unknown };
+  try {
+    payload = (await c.req.json()) as typeof payload;
+  } catch {
+    return c.json({ error: "invalid_body", message: "JSON body required" }, 400);
+  }
+  const gapId = typeof payload.gap_id === "string" ? payload.gap_id : "";
+  if (!gapId) {
+    return c.json(
+      { error: "invalid_body", message: "gap_id is required" },
+      400,
+    );
+  }
+
+  const gap = await c.env.DB.prepare(
+    "SELECT id, concept, status, origin_grade_id FROM gaps WHERE id = ? AND project_id = ?",
+  )
+    .bind(gapId, projectId)
+    .first<{
+      id: string;
+      concept: string;
+      status: string;
+      origin_grade_id: string | null;
+    }>();
+  if (!gap) return c.json({ error: "gap not found" }, 404);
+  if (gap.status === "closed") {
+    return c.json(
+      { error: "gap_closed", message: "this gap is already closed" },
+      400,
+    );
+  }
+
+  // Recover what the original grade found, and the question that caused it.
+  let origin: { questionBody: string | null; missing: string[]; shallow: string[] } =
+    { questionBody: null, missing: [], shallow: [] };
+  if (gap.origin_grade_id) {
+    const gradeRow = await c.env.DB.prepare(
+      `SELECT g.missing_points, g.shallow_points, q.body AS question_body
+         FROM grades g
+         JOIN attempts a ON a.id = g.attempt_id
+         JOIN questions q ON q.id = a.question_id
+        WHERE g.id = ?`,
+    )
+      .bind(gap.origin_grade_id)
+      .first<{
+        missing_points: string;
+        shallow_points: string;
+        question_body: string;
+      }>();
+    if (gradeRow) {
+      origin = {
+        questionBody: gradeRow.question_body,
+        missing: JSON.parse(gradeRow.missing_points) as string[],
+        shallow: JSON.parse(gradeRow.shallow_points) as string[],
+      };
+    }
+  }
+
+  const queries = [
+    PHASE5_INSTRUCTION,
+    gap.concept,
+    ...origin.missing,
+    ...origin.shallow,
+  ].slice(0, 6);
+  const chunks = await gatherChunks(c.env, projectId, queries);
+  if (chunks.length === 0) {
+    return c.json(
+      {
+        error: "no_sources",
+        message: "Phase 5 needs at least one ingested source (Phase 0) first",
+      },
+      400,
+    );
+  }
+
+  let raw: RawQuestions;
+  try {
+    raw = await chatJSON<RawQuestions>(
+      c.env,
+      buildRetestMessages(chunks, gap, origin),
+    );
+  } catch (error) {
+    console.error("phase 5 retest generation failed", error);
+    return c.json(
+      { error: "phase5_generation_failed", message: errorMessage(error) },
+      502,
+    );
+  }
+
+  const { questions } = validateQuestions(raw, chunks);
+  const question = questions[0];
+  if (!question) {
+    return c.json(
+      {
+        error: "phase5_no_grounded_question",
+        message:
+          "The model returned no retest question with a valid citation; the gap is unchanged",
+      },
+      502,
+    );
+  }
+
+  // Regenerating while retesting replaces the unanswered question.
+  await c.env.DB.batch([
+    c.env.DB
+      .prepare(
+        `DELETE FROM questions WHERE gap_id = ? AND id NOT IN (SELECT question_id FROM attempts)`,
+      )
+      .bind(gap.id),
+    c.env.DB
+      .prepare(
+        `INSERT INTO questions (id, project_id, body, tag, model_answer, rubric, gap_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        question.id,
+        projectId,
+        question.body,
+        question.tag,
+        question.model_answer,
+        JSON.stringify(question.rubric),
+        gap.id,
+      ),
+    c.env.DB
+      .prepare("UPDATE gaps SET status = 'retesting' WHERE id = ?")
+      .bind(gap.id),
+    c.env.DB
+      .prepare(
+        "UPDATE projects SET phase = 4, updated_at = datetime('now') WHERE id = ? AND phase < 4",
+      )
+      .bind(projectId),
+  ]);
+
+  return c.json({
+    question: { id: question.id, body: question.body, tag: question.tag },
+    gap_id: gap.id,
+    meta: { chunks_used: chunks.length },
+  });
+});
