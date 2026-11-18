@@ -1,7 +1,7 @@
 # ClosedBook 設計メモ
 
 作成：2026-11-16
-状態：実装方式は候補C（Hono + Cloudflare）に決定し、Phase 0（資料取り込み）を実装済み（2026-11-18）。入力は Microsoft MarkItDown で変換した Markdown／テキストとし、埋め込みの参照構成は Sakura AI Engine の multilingual-e5-large（1024次元）。
+状態：実装方式は候補C（Hono + Cloudflare）に決定し、Phase 0（資料取り込み）と Phase 1（骨格）を実装済み（2026-11-18）。入力は Microsoft MarkItDown で変換した Markdown／テキストとし、埋め込みの参照構成は Sakura AI Engine の multilingual-e5-large（1024次元）。生成の参照構成も Sakura AI Engine（DeepSeek-V4.1-Flash プレビュー）。実リソース（D1／R2／Vectorize）を作成し、本番デプロイ（closedbook.hamakyo.workers.dev）で Phase 0・1 の正常系を通しで確認済み。
 
 ## 1. 概要
 
