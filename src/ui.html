@@ -7,37 +7,172 @@
 <link rel="stylesheet" href="/assets/css_variables.css">
 <link rel="stylesheet" href="/assets/fundamental-styles.css">
 <style>
-  body { margin: 0; background: var(--sapBackgroundColor, #f7f7f7); }
-  .cb-main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
-  .cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
-  .cb-card-body { padding: 1rem; }
-  .cb-steps { display: flex; gap: 0.25rem; flex-wrap: wrap; margin: 1rem 0; }
-  .cb-step { flex: 1 1 7rem; text-align: center; padding: 0.45rem 0.25rem; border-radius: 0.5rem;
-             background: var(--sapList_Background, #fff); border: 1px solid var(--sapList_BorderColor, #d9d9d9);
-             color: var(--sapContent_LabelColor, #6a6d70); font-size: 0.875rem; }
-  .cb-step.done { background: var(--sapPositiveColor, #107e3e); border-color: transparent; color: #fff; }
-  .cb-step.current { border-color: var(--sapHighlightColor, #0a6ed1); color: var(--sapHighlightColor, #0a6ed1); font-weight: 700; }
-  .cb-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
-  .cb-layer { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
-  .cb-node { margin-bottom: 0.5rem; }
-  .cb-cite { display: inline-block; margin: 0.15rem 0.25rem 0 0; padding: 0.05rem 0.5rem; border-radius: 1rem;
-             background: var(--sapInformationBackground, #eaf3fc); color: var(--sapInformationColor, #0a6ed1); font-size: 0.75rem; }
-  .cb-q { margin-bottom: 1rem; }
-  .cb-score { display: flex; justify-content: space-between; gap: 1rem; padding: 0.3rem 0; border-bottom: 1px solid var(--sapList_BorderColor, #eee); }
-  .cb-detail { white-space: pre-line; }
-  .cb-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.75rem 0; }
+  :root {
+    --cb-ink: var(--sapTextColor, #131e29);
+    --cb-sub: var(--sapContent_LabelColor, #556b7d);
+    --cb-line: var(--sapList_BorderColor, #d9d9d9);
+    --cb-accent: var(--sapHighlightColor, #0a6ed1);
+    --cb-good: var(--sapPositiveColor, #107e3e);
+    --cb-bad: var(--sapNegativeColor, #b00);
+    --cb-warn: var(--sapCriticalColor, #df6e0c);
+    --cb-panel: var(--sapList_Background, #fff);
+    --cb-tint: var(--sapInformationBackground, #eaf3fc);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--sapBackgroundColor, #f5f6f7); color: var(--cb-ink);
+         font-family: "72", "72full", -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  .cb-main { max-width: 1060px; margin: 0 auto; padding: 2rem 1.25rem 5rem; }
+
+  /* shellbar */
+  .cb-logo { display: inline-flex; align-items: center; justify-content: center;
+             width: 1.75rem; height: 1.75rem; border-radius: 0.375rem; margin-right: 0.625rem;
+             background: var(--cb-accent); color: #fff; font-weight: 700; font-size: 0.8125rem; letter-spacing: 0.02em; }
+
+  /* generic */
   .cb-hidden { display: none !important; }
-  .cb-muted { color: var(--sapContent_LabelColor, #6a6d70); }
+  .cb-muted { color: var(--cb-sub); }
+  .cb-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .cb-panel { background: var(--cb-panel); border: 1px solid var(--cb-line); border-radius: 0.75rem;
+              box-shadow: var(--sapContent_Shadow0, 0 1px 2px rgba(19,30,41,.06)); }
+  .cb-empty { padding: 3.5rem 1.5rem; text-align: center; color: var(--cb-sub);
+              border: 1px dashed var(--cb-line); border-radius: 0.75rem; font-size: 0.9375rem; }
+  .cb-pagehead { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
+  .cb-pagehead .fd-title { margin: 0; }
+
+  /* stepper */
+  .cb-steps { display: flex; margin: 0.25rem 0 0; }
+  .cb-step { flex: 1; position: relative; text-align: center; padding-top: 0.125rem; }
+  .cb-step::before { content: ""; position: absolute; top: 0.8125rem; left: -50%; width: 100%; height: 2px;
+                     background: var(--cb-line); }
+  .cb-step:first-child::before { display: none; }
+  .cb-step.done::before { background: var(--cb-good); }
+  .cb-step-dot { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
+                 width: 1.625rem; height: 1.625rem; border-radius: 50%;
+                 border: 2px solid var(--cb-line); background: var(--cb-panel);
+                 color: var(--cb-sub); font-size: 0.75rem; font-weight: 700; }
+  .cb-step.done .cb-step-dot { background: var(--cb-good); border-color: var(--cb-good); color: #fff; }
+  .cb-step.current .cb-step-dot { border-color: var(--cb-accent); color: var(--cb-accent);
+                                  box-shadow: 0 0 0 3px var(--cb-tint); }
+  .cb-step-label { display: block; margin-top: 0.375rem; font-size: 0.8125rem; color: var(--cb-sub); }
+  .cb-step.done .cb-step-label { color: var(--cb-ink); }
+  .cb-step.current .cb-step-label { color: var(--cb-accent); font-weight: 700; }
+  .cb-steps--compact .cb-step-dot { width: 1.25rem; height: 1.25rem; font-size: 0.625rem; border-width: 2px; }
+  .cb-steps--compact .cb-step::before { top: 0.625rem; }
+  .cb-steps--compact .cb-step-label { font-size: 0.6875rem; margin-top: 0.25rem; }
+
+  /* project cards */
+  .cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+  .cb-project { padding: 1.25rem 1.25rem 1rem; cursor: pointer; transition: box-shadow .15s ease, border-color .15s ease; }
+  .cb-project:hover { border-color: var(--cb-accent); box-shadow: var(--sapContent_Shadow1, 0 4px 16px rgba(19,30,41,.12)); }
+  .cb-project-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
+  .cb-project-name { font-size: 1.125rem; font-weight: 700; line-height: 1.35; }
+  .cb-project-arrow { color: var(--cb-sub); font-size: 1.25rem; line-height: 1; }
+  .cb-project-foot { margin-top: 0.875rem; min-height: 1.25rem; }
+  .cb-create { padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+  .cb-create .cb-actions { margin: 0; }
+  .cb-create input { flex: 1 1 16rem; }
+
+  /* project header */
+  .cb-back { margin-bottom: 0.5rem; }
+  .cb-projhead { margin-bottom: 1.5rem; }
+  .cb-projhead .fd-title { margin: 0 0 1.25rem; }
+  .cb-projhead .cb-steps { max-width: 44rem; }
+
+  /* tabs */
+  .fd-tabs { margin-bottom: 1.5rem; }
+
+  /* sources */
+  .cb-source-form { padding: 1rem 1.25rem; margin-bottom: 1rem; }
+  .cb-source-form .cb-actions { margin: 0; }
+  .cb-rows { overflow: hidden; }
+  .cb-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            padding: 0.875rem 1.25rem; border-top: 1px solid var(--cb-line); }
+  .cb-row:first-child { border-top: none; }
+  .cb-row-title { font-weight: 600; }
+  .cb-row-meta { color: var(--cb-sub); font-size: 0.8125rem; white-space: nowrap; }
+
+  /* skeleton map */
+  .cb-layer-head { display: flex; align-items: baseline; gap: 0.625rem; margin: 1.75rem 0 0.75rem; }
+  .cb-layer-head:first-child { margin-top: 0.5rem; }
+  .cb-layer-name { font-size: 1rem; font-weight: 700; }
+  .cb-layer-count { color: var(--cb-sub); font-size: 0.8125rem; }
+  .cb-node { padding: 1rem 1.25rem; margin-bottom: 0.625rem; border-left: 4px solid var(--cb-line); }
+  .cb-node--foundation { border-left-color: #8a97a3; }
+  .cb-node--core { border-left-color: var(--cb-accent); }
+  .cb-node--branch { border-left-color: #c3ced7; }
+  .cb-node-name { font-size: 1rem; font-weight: 700; }
+  .cb-node-desc { margin: 0.375rem 0 0; line-height: 1.65; color: #2b3a47; }
+  .cb-cites { margin-top: 0.75rem; padding-top: 0.625rem; border-top: 1px solid var(--cb-line); }
+  .cb-cite { display: inline-block; margin: 0 0.375rem 0.25rem 0; padding: 0.125rem 0.625rem; border-radius: 1rem;
+             background: var(--cb-tint); color: var(--cb-accent); font-size: 0.75rem; font-weight: 600; }
+  .cb-rel-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 1.25rem;
+                border-top: 1px solid var(--cb-line); flex-wrap: wrap; }
+  .cb-rel-row:first-child { border-top: none; }
+  .cb-rel-name { font-weight: 600; }
+  .cb-rel-pill { padding: 0.0625rem 0.5rem; border-radius: 1rem; background: #eef1f3; color: var(--cb-sub);
+                 font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+  .cb-rel-arrow { color: var(--cb-sub); }
+
+  /* controversies */
+  .cb-contro { padding: 1.25rem; margin-bottom: 1rem; }
+  .cb-contro-topic { font-size: 1.125rem; font-weight: 700; margin: 0; }
+  .cb-contro-summary { margin: 0.5rem 0 0; line-height: 1.65; color: #2b3a47; }
+  .cb-positions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.875rem; margin-top: 1rem; }
+  .cb-position { background: var(--sapBackgroundColor, #f5f6f7); border-radius: 0.5rem; padding: 1rem 1.125rem; }
+  .cb-position-stance { font-weight: 700; margin-bottom: 0.5rem; }
+  .cb-claim-label { display: block; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
+                    color: var(--cb-sub); margin: 0.75rem 0 0.25rem; }
+  .cb-claim { margin: 0; line-height: 1.6; font-size: 0.9375rem; }
+  .cb-position .cb-cites { border-top-color: #dde3e8; }
+  .cb-unresolved { margin-top: 1rem; }
+
+  /* test */
+  .cb-q { padding: 1.25rem; margin-bottom: 1rem; }
+  .cb-q-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
+  .cb-q-num { font-size: 1.25rem; font-weight: 700; color: var(--cb-sub); }
+  .cb-q-tag { padding: 0.125rem 0.625rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 700;
+              background: #eef1f3; color: var(--cb-sub); }
+  .cb-q-tag--concept { background: var(--cb-tint); color: var(--cb-accent); }
+  .cb-q-tag--causal { background: #fdeee3; color: #a93e00; }
+  .cb-q-tag--application { background: #e6f4ec; color: #0c5c2e; }
+  .cb-q-tag--controversy { background: #fbe9ec; color: #8f1022; }
+  .cb-q-body { margin: 0 0 1rem; font-size: 1rem; line-height: 1.7; }
+  textarea.fd-textarea { width: 100%; min-height: 7.5rem; line-height: 1.6; }
+  .cb-q-actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
+  .cb-grade { margin-top: 1rem; border-top: 1px solid var(--cb-line); padding-top: 1rem; }
+  .cb-score { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+              padding: 0.4375rem 0; border-bottom: 1px solid #edf0f2; }
+  .cb-score:last-child { border-bottom: none; }
+  .cb-score-point { display: flex; align-items: center; gap: 0.5rem; }
+  .cb-dot { width: 0.5625rem; height: 0.5625rem; border-radius: 50%; flex: none; }
+  .cb-dot--2 { background: var(--cb-good); }
+  .cb-dot--1 { background: var(--cb-warn); }
+  .cb-dot--0 { background: var(--cb-bad); }
+  .cb-grade h4 { margin: 1rem 0 0.375rem; font-size: 0.875rem; }
+  .cb-grade ul { margin: 0; padding-left: 1.25rem; line-height: 1.65; }
+  .cb-grade p { line-height: 1.65; }
+  .cb-model { background: var(--sapBackgroundColor, #f5f6f7); border-radius: 0.5rem; padding: 0.875rem 1rem; margin-top: 0.5rem; }
+  .cb-model p { margin: 0; }
+  .cb-verdict { margin-top: 1rem; }
   .cb-lockbar { margin-bottom: 1rem; }
-  textarea.fd-textarea { width: 100%; min-height: 7rem; }
-  .fd-card { cursor: default; }
-  .cb-clickable { cursor: pointer; }
+
+  /* gaps */
+  .cb-gap { padding: 1.125rem 1.25rem; margin-bottom: 0.625rem; }
+  .cb-gap-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+  .cb-gap-concept { font-size: 1rem; font-weight: 700; }
+  .cb-gap-detail { white-space: pre-line; margin: 0.5rem 0 0; line-height: 1.65; }
+  .cb-retest-area { margin-top: 1rem; border-top: 1px solid var(--cb-line); padding-top: 1rem; }
+  .cb-retest-q { margin: 0 0 0.75rem; line-height: 1.7; }
+
+  .cb-tabpanel > .cb-actions { margin-bottom: 1rem; }
+  #cb-error { margin-bottom: 1rem; }
 </style>
 </head>
 <body>
 <header class="fd-shellbar">
   <div class="fd-shellbar__group fd-shellbar__group--product">
-    <span class="fd-shellbar__product"><span class="fd-shellbar__product-name">ClosedBook</span></span>
+    <span class="fd-shellbar__product"><span class="cb-logo">CB</span><span class="fd-shellbar__product-name">ClosedBook</span></span>
   </div>
 </header>
 
@@ -46,19 +181,23 @@
 
   <!-- Projects -->
   <section id="view-projects">
-    <h1 class="fd-title fd-title--h1">分野</h1>
-    <form id="form-project" class="cb-actions">
-      <input id="input-project-name" class="fd-input" type="text" placeholder="新しい分野の名前" style="max-width:20rem" required>
-      <button class="fd-button fd-button--emphasized" type="submit">作成</button>
-    </form>
+    <div class="cb-pagehead"><h1 class="fd-title fd-title--h1">分野</h1></div>
+    <div class="cb-panel cb-create">
+      <form id="form-project" class="cb-actions">
+        <input id="input-project-name" class="fd-input" type="text" placeholder="新しい分野の名前" required>
+        <button class="fd-button fd-button--emphasized" type="submit">作成</button>
+      </form>
+    </div>
     <div id="project-list" class="cb-grid"></div>
   </section>
 
   <!-- Project -->
   <section id="view-project" class="cb-hidden">
-    <button id="btn-back" class="fd-button fd-button--transparent">← 分野一覧</button>
-    <h1 id="project-name" class="fd-title fd-title--h1"></h1>
-    <div id="phase-steps" class="cb-steps"></div>
+    <div class="cb-back"><button id="btn-back" class="fd-button fd-button--transparent">← 分野一覧</button></div>
+    <div class="cb-projhead">
+      <h1 id="project-name" class="fd-title fd-title--h1"></h1>
+      <div id="phase-steps"></div>
+    </div>
 
     <ul class="fd-tabs" role="tablist">
       <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="sources" role="tab">資料</a></li>
@@ -69,11 +208,13 @@
     </ul>
 
     <div id="tab-sources" class="cb-tabpanel">
-      <form id="form-source" class="cb-actions">
-        <input id="input-source-title" class="fd-input" type="text" placeholder="資料のタイトル（任意）" style="max-width:16rem">
-        <input id="input-source-file" class="fd-input" type="file" accept=".md,.txt,.markdown" required>
-        <button class="fd-button fd-button--emphasized" type="submit">取り込む</button>
-      </form>
+      <div class="cb-panel cb-source-form">
+        <form id="form-source" class="cb-actions">
+          <input id="input-source-title" class="fd-input" type="text" placeholder="資料のタイトル（任意）" style="max-width:16rem">
+          <input id="input-source-file" class="fd-input" type="file" accept=".md,.txt,.markdown" required>
+          <button class="fd-button fd-button--emphasized" type="submit">取り込む</button>
+        </form>
+      </div>
       <div id="source-list"></div>
     </div>
 
@@ -117,15 +258,18 @@ const state = { project: null, answering: false, tab: "sources" };
 
 // project.phase is the highest completed phase (Phase 1 done -> phase 1).
 // Step 0 （資料） counts as done once any later phase has run.
-function stepsHtml(phase) {
+function stepsHtml(phase, compact) {
   let currentAssigned = false;
-  return PHASES.map((label, i) => {
+  const steps = PHASES.map((label, i) => {
     const done = i === 0 ? phase >= 1 : phase >= i;
     let cls = "";
     if (done) cls = " done";
     else if (!currentAssigned) { cls = " current"; currentAssigned = true; }
-    return '<div class="cb-step' + cls + '">' + label + "</div>";
+    const dot = done ? "✓" : String(i + 1);
+    return '<div class="cb-step' + cls + '"><span class="cb-step-dot">' + dot + '</span>' +
+      '<span class="cb-step-label">' + label + "</span></div>";
   }).join("");
+  return '<div class="cb-steps' + (compact ? " cb-steps--compact" : "") + '">' + steps + "</div>";
 }
 
 function showError(message) {
@@ -156,8 +300,9 @@ async function busy(button, label, fn) {
 /* ---------- projects ---------- */
 
 async function loadProjects() {
-  const { projects } = await api("/api/projects");
   const list = $("#project-list");
+  if (!list.children.length) list.innerHTML = '<p class="cb-muted">読み込み中…</p>';
+  const { projects } = await api("/api/projects");
   list.innerHTML = "";
   for (const project of projects) {
     let gapCount = 0;
@@ -168,18 +313,19 @@ async function loadProjects() {
       } catch (e) { /* count is decorative */ }
     }
     const card = document.createElement("div");
-    card.className = "fd-card cb-clickable";
+    card.className = "cb-panel cb-project";
     card.innerHTML =
-      '<div class="cb-card-body">' +
-      '<h3 class="fd-title fd-title--h3">' + esc(project.name) + "</h3>" +
-      '<div class="cb-steps">' + stepsHtml(project.phase) + "</div>" +
+      '<div class="cb-project-head"><span class="cb-project-name">' + esc(project.name) + '</span>' +
+      '<span class="cb-project-arrow">›</span></div>' +
+      stepsHtml(project.phase, true) +
+      '<div class="cb-project-foot">' +
       (gapCount > 0 ? '<span class="fd-object-status fd-object-status--negative">未解消の穴 ' + gapCount + "</span>" : "") +
       "</div>";
     card.addEventListener("click", () => openProject(project.id));
     list.appendChild(card);
   }
   if (projects.length === 0) {
-    list.innerHTML = '<p class="cb-muted">まだ分野がない。</p>';
+    list.innerHTML = '<div class="cb-empty" style="grid-column:1/-1">まだ分野がない。上の欄から作る。</div>';
   }
 }
 
@@ -213,7 +359,7 @@ async function openProject(id) {
 }
 
 function renderSteps() {
-  $("#phase-steps").innerHTML = stepsHtml(state.project.phase);
+  $("#phase-steps").innerHTML = stepsHtml(state.project.phase, false);
 }
 
 $("#btn-back").addEventListener("click", () => {
@@ -255,15 +401,14 @@ async function loadSources() {
   const sources = data.sources || [];
   const el = $("#source-list");
   if (sources.length === 0) {
-    el.innerHTML = '<p class="cb-muted">資料がまだない。Markdown かテキストを取り込む。</p>';
+    el.innerHTML = '<div class="cb-empty">資料がまだない。Markdown かテキストを取り込む。</div>';
     return;
   }
-  el.innerHTML = sources.map((s) =>
-    '<div class="fd-card cb-node"><div class="cb-card-body">' +
-    '<strong>' + esc(s.title) + "</strong>" +
-    (s.chunk_count != null ? ' <span class="cb-muted">' + s.chunk_count + " チャンク</span>" : "") +
-    "</div></div>"
-  ).join("");
+  el.innerHTML = '<div class="cb-panel cb-rows">' + sources.map((s) =>
+    '<div class="cb-row"><span class="cb-row-title">' + esc(s.title) + "</span>" +
+    (s.chunk_count != null ? '<span class="cb-row-meta">' + s.chunk_count + " チャンク</span>" : "") +
+    "</div>"
+  ).join("") + "</div>";
 }
 
 $("#form-source").addEventListener("submit", async (ev) => {
@@ -289,7 +434,7 @@ $("#form-source").addEventListener("submit", async (ev) => {
 
 function citesHtml(citations) {
   const seen = new Set();
-  return (citations || [])
+  const chips = (citations || [])
     .map((c) => c.chapter || c.source_title || "")
     .filter((label) => {
       if (!label || seen.has(label)) return false;
@@ -298,6 +443,7 @@ function citesHtml(citations) {
     })
     .map((label) => '<span class="cb-cite">' + esc(label) + "</span>")
     .join("");
+  return chips ? '<div class="cb-cites">' + chips + "</div>" : "";
 }
 
 async function loadMap() {
@@ -305,7 +451,7 @@ async function loadMap() {
   const { map } = await api("/api/projects/" + state.project.id + "/phases/1");
   const el = $("#map-view");
   if (!map || !map.nodes || map.nodes.length === 0) {
-    el.innerHTML = '<p class="cb-muted">骨格がまだない。</p>';
+    el.innerHTML = '<div class="cb-empty">骨格がまだない。</div>';
     return;
   }
   const layers = [["foundation", "土台"], ["core", "中核"], ["branch", "枝葉"]];
@@ -313,22 +459,26 @@ async function loadMap() {
   for (const [key, label] of layers) {
     const nodes = map.nodes.filter((n) => n.layer === key);
     if (nodes.length === 0) continue;
-    html += '<h2 class="cb-layer fd-title fd-title--h2">' + label + "</h2>";
+    html += '<div class="cb-layer-head"><span class="cb-layer-name">' + label + '</span>' +
+      '<span class="cb-layer-count">' + nodes.length + " 件</span></div>";
     html += nodes.map((n) =>
-      '<div class="fd-card cb-node"><div class="cb-card-body">' +
-      "<strong>" + esc(n.name) + "</strong>" +
-      (n.description ? '<p>' + esc(n.description) + "</p>" : "") +
-      "<div>" + citesHtml(n.citations) + "</div>" +
-      "</div></div>"
+      '<div class="cb-panel cb-node cb-node--' + key + '">' +
+      '<span class="cb-node-name">' + esc(n.name) + "</span>" +
+      (n.description ? '<p class="cb-node-desc">' + esc(n.description) + "</p>" : "") +
+      citesHtml(n.citations) +
+      "</div>"
     ).join("");
   }
   const nameOf = (id) => (map.nodes.find((n) => n.id === id) || {}).name || id;
   const relLabel = { prerequisite: "前提", causal: "因果", contrast: "対比", part_of: "一部" };
   if (map.edges && map.edges.length > 0) {
-    html += '<h2 class="cb-layer fd-title fd-title--h2">関係</h2><ul class="fd-list">' +
+    html += '<div class="cb-layer-head"><span class="cb-layer-name">関係</span>' +
+      '<span class="cb-layer-count">' + map.edges.length + ' 件</span></div><div class="cb-panel cb-rows">' +
       map.edges.map((e) =>
-        '<li class="fd-list__item">' + esc(nameOf(e.from_node)) + " —" + esc(relLabel[e.relation] || e.relation) + "→ " + esc(nameOf(e.to_node)) + "</li>"
-      ).join("") + "</ul>";
+        '<div class="cb-rel-row"><span class="cb-rel-name">' + esc(nameOf(e.from_node)) + '</span>' +
+        '<span class="cb-rel-pill">' + esc(relLabel[e.relation] || e.relation) + '</span>' +
+        '<span class="cb-rel-arrow">→</span><span class="cb-rel-name">' + esc(nameOf(e.to_node)) + "</span></div>"
+      ).join("") + "</div>";
   }
   el.innerHTML = html;
 }
@@ -345,29 +495,34 @@ $("#btn-phase1").addEventListener("click", async (ev) => {
 
 /* ---------- controversies (Phase 2) ---------- */
 
+function claimBlock(label, text) {
+  return text ? '<span class="cb-claim-label">' + label + '</span><p class="cb-claim">' + esc(text) + "</p>" : "";
+}
+
 async function loadControversies() {
   if (!state.project) return;
   const { controversies } = await api("/api/projects/" + state.project.id + "/phases/2");
   const el = $("#controversy-view");
   if (!controversies || controversies.length === 0) {
     el.innerHTML = state.project.phase >= 2
-      ? '<p class="cb-muted">資料内に根本的論争は見当たらない。</p>'
-      : '<p class="cb-muted">論争がまだ検出されていない。</p>';
+      ? '<div class="cb-empty">資料内に根本的論争は見当たらない。</div>'
+      : '<div class="cb-empty">論争がまだ検出されていない。</div>';
     return;
   }
   el.innerHTML = controversies.map((item) =>
-    '<div class="fd-card cb-node"><div class="cb-card-body">' +
-    '<h3 class="fd-title fd-title--h3">' + esc(item.topic) + "</h3>" +
-    (item.summary ? "<p>" + esc(item.summary) + "</p>" : "") +
-    '<div class="cb-two">' + item.positions.map((p) =>
-      '<div><strong>' + esc(p.stance) + "</strong>" +
-      (p.claims ? "<p><em>主張</em> " + esc(p.claims) + "</p>" : "") +
-      (p.evidence ? "<p><em>根拠</em> " + esc(p.evidence) + "</p>" : "") +
-      (p.rebuttal ? "<p><em>反論</em> " + esc(p.rebuttal) + "</p>" : "") +
-      "<div>" + citesHtml(p.citations) + "</div></div>"
+    '<div class="cb-panel cb-contro">' +
+    '<h3 class="cb-contro-topic">' + esc(item.topic) + "</h3>" +
+    (item.summary ? '<p class="cb-contro-summary">' + esc(item.summary) + "</p>" : "") +
+    '<div class="cb-positions">' + item.positions.map((p) =>
+      '<div class="cb-position"><div class="cb-position-stance">' + esc(p.stance) + "</div>" +
+      claimBlock("主張", p.claims) +
+      claimBlock("根拠", p.evidence) +
+      claimBlock("反論", p.rebuttal) +
+      citesHtml(p.citations) +
+      "</div>"
     ).join("") + "</div>" +
-    (item.unresolved ? '<p class="cb-muted">未決着の理由: ' + esc(item.unresolved) + "</p>" : "") +
-    "</div></div>"
+    (item.unresolved ? '<div class="fd-message-strip fd-message-strip--warning cb-unresolved">未決着の理由: ' + esc(item.unresolved) + "</div>" : "") +
+    "</div>"
   ).join("");
 }
 
@@ -402,21 +557,20 @@ async function loadQuestions() {
   const el = $("#question-list");
   $("#btn-answer-mode").classList.toggle("cb-hidden", questions.length === 0);
   if (questions.length === 0) {
-    el.innerHTML = '<p class="cb-muted">問題がまだない。</p>';
+    el.innerHTML = '<div class="cb-empty">問題がまだない。</div>';
     return;
   }
   el.innerHTML = "";
   questions.forEach((q, i) => {
     const card = document.createElement("div");
-    card.className = "fd-card cb-q";
+    card.className = "cb-panel cb-q";
     card.innerHTML =
-      '<div class="cb-card-body">' +
-      '<span class="cb-cite">' + esc(TAG_LABEL[q.tag] || q.tag) + "</span>" +
-      "<p><strong>Q" + (i + 1) + ".</strong> " + esc(q.body) + "</p>" +
+      '<div class="cb-q-head"><span class="cb-q-num">Q' + (i + 1) + '</span>' +
+      '<span class="cb-q-tag cb-q-tag--' + esc(q.tag) + '">' + esc(TAG_LABEL[q.tag] || q.tag) + "</span></div>" +
+      '<p class="cb-q-body">' + esc(q.body) + "</p>" +
       '<textarea class="fd-textarea" placeholder="自分の言葉で答える" disabled></textarea>' +
-      '<div class="cb-actions"><button class="fd-button fd-button--emphasized cb-grade-btn" disabled>採点する</button></div>' +
-      '<div class="cb-grade-result"></div>' +
-      "</div>";
+      '<div class="cb-q-actions"><button class="fd-button fd-button--emphasized cb-grade-btn" disabled>採点する</button></div>' +
+      '<div class="cb-grade-result"></div>';
     card.querySelector(".cb-grade-btn").addEventListener("click", async (ev) => {
       const answer = card.querySelector("textarea").value.trim();
       if (!answer) { showError("回答を書いてから採点する。"); return; }
@@ -444,25 +598,25 @@ function gradeHtml(result) {
     : v === 1
       ? '<span class="fd-object-status fd-object-status--critical">浅い</span>'
       : '<span class="fd-object-status fd-object-status--negative">不足</span>';
-  let html = '<div class="cb-score-list">' + Object.entries(g.scores).map(([point, v]) =>
-    '<div class="cb-score"><span>' + esc(point) + "</span>" + scoreLabel(v) + "</div>"
-  ).join("") + "</div>";
+  let html = '<div class="cb-grade">' + Object.entries(g.scores).map(([point, v]) =>
+    '<div class="cb-score"><span class="cb-score-point"><span class="cb-dot cb-dot--' + v + '"></span>' + esc(point) + "</span>" + scoreLabel(v) + "</div>"
+  ).join("");
   if (g.missing_points.length > 0) {
-    html += "<p><strong>不足</strong></p><ul>" + g.missing_points.map((p) => "<li>" + esc(p) + "</li>").join("") + "</ul>";
+    html += "<h4>不足</h4><ul>" + g.missing_points.map((p) => "<li>" + esc(p) + "</li>").join("") + "</ul>";
   }
   if (g.shallow_points.length > 0) {
-    html += "<p><strong>浅さ</strong></p><ul>" + g.shallow_points.map((p) => "<li>" + esc(p) + "</li>").join("") + "</ul>";
+    html += "<h4>浅さ</h4><ul>" + g.shallow_points.map((p) => "<li>" + esc(p) + "</li>").join("") + "</ul>";
   }
-  if (g.followup) html += "<p><strong>追い質問</strong> " + esc(g.followup) + "</p>";
-  if (result.model_answer) html += "<p><strong>模範解答</strong> " + esc(result.model_answer) + "</p>";
+  if (g.followup) html += "<h4>追い質問</h4><p>" + esc(g.followup) + "</p>";
+  if (result.model_answer) html += '<h4>模範解答</h4><div class="cb-model"><p>' + esc(result.model_answer) + "</p></div>";
   if (result.retest) {
     html += result.retest.passed
-      ? '<p><span class="fd-object-status fd-object-status--positive">再テスト合格。穴は解消した。</span></p>'
-      : '<p><span class="fd-object-status fd-object-status--negative">再テスト不合格。穴は残る。</span></p>';
+      ? '<p class="cb-verdict"><span class="fd-object-status fd-object-status--positive">再テスト合格。穴は解消した。</span></p>'
+      : '<p class="cb-verdict"><span class="fd-object-status fd-object-status--negative">再テスト不合格。穴は残る。</span></p>';
   } else if (result.gap_opened) {
-    html += '<p><span class="fd-object-status fd-object-status--critical">理解の穴として記録した。</span></p>';
+    html += '<p class="cb-verdict"><span class="fd-object-status fd-object-status--critical">理解の穴として記録した。</span></p>';
   }
-  return html;
+  return html + "</div>";
 }
 
 $("#btn-phase3").addEventListener("click", async (ev) => {
@@ -485,21 +639,20 @@ async function loadGaps() {
   const { gaps } = await api("/api/projects/" + state.project.id + "/gaps");
   const el = $("#gap-list");
   if (gaps.length === 0) {
-    el.innerHTML = '<p class="cb-muted">穴はない。</p>';
+    el.innerHTML = '<div class="cb-empty">穴はない。</div>';
     return;
   }
   el.innerHTML = "";
   for (const gap of gaps) {
     const card = document.createElement("div");
-    card.className = "fd-card cb-node";
+    card.className = "cb-panel cb-gap";
     let inner =
-      '<div class="cb-card-body">' +
-      "<strong>" + esc(gap.concept) + "</strong> " + (GAP_STATUS[gap.status] || esc(gap.status)) +
-      (gap.detail ? '<p class="cb-detail cb-muted">' + esc(gap.detail) + "</p>" : "");
+      '<div class="cb-gap-head"><span class="cb-gap-concept">' + esc(gap.concept) + "</span>" +
+      (GAP_STATUS[gap.status] || esc(gap.status)) + "</div>" +
+      (gap.detail ? '<p class="cb-gap-detail cb-muted">' + esc(gap.detail) + "</p>" : "");
     if (gap.status === "open") {
-      inner += '<div class="cb-actions"><button class="fd-button fd-button--emphasized cb-retest-btn">再テスト</button></div><div class="cb-retest-area"></div>';
+      inner += '<div class="cb-actions" style="margin-top:0.75rem"><button class="fd-button fd-button--emphasized cb-retest-btn">再テスト</button></div><div class="cb-retest-area cb-hidden"></div>';
     }
-    inner += "</div>";
     card.innerHTML = inner;
     const btn = card.querySelector(".cb-retest-btn");
     if (btn) {
@@ -512,10 +665,11 @@ async function loadGaps() {
           });
           state.answering = true; // source lock applies to retests too
           const area = card.querySelector(".cb-retest-area");
+          area.classList.remove("cb-hidden");
           area.innerHTML =
-            "<p><strong>再テスト</strong> " + esc(data.question.body) + "</p>" +
+            '<p class="cb-retest-q">' + esc(data.question.body) + "</p>" +
             '<textarea class="fd-textarea" placeholder="自分の言葉で答える"></textarea>' +
-            '<div class="cb-actions"><button class="fd-button fd-button--emphasized cb-retest-grade">採点する</button></div>' +
+            '<div class="cb-q-actions"><button class="fd-button fd-button--emphasized cb-retest-grade">採点する</button></div>' +
             '<div class="cb-grade-result"></div>';
           area.querySelector(".cb-retest-grade").addEventListener("click", async (ev2) => {
             const answer = area.querySelector("textarea").value.trim();
