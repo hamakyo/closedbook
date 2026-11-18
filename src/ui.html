@@ -4,191 +4,231 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClosedBook</title>
-<link rel="stylesheet" href="/assets/css_variables.css">
-<link rel="stylesheet" href="/assets/fundamental-styles.css">
 <style>
   :root {
-    --cb-ink: var(--sapTextColor, #131e29);
-    --cb-sub: var(--sapContent_LabelColor, #556b7d);
-    --cb-line: var(--sapList_BorderColor, #d9d9d9);
-    --cb-accent: var(--sapHighlightColor, #0a6ed1);
-    --cb-good: var(--sapPositiveColor, #107e3e);
-    --cb-bad: var(--sapNegativeColor, #b00);
-    --cb-warn: var(--sapCriticalColor, #df6e0c);
-    --cb-panel: var(--sapList_Background, #fff);
-    --cb-tint: var(--sapInformationBackground, #eaf3fc);
+    --paper: #f6f3ec;
+    --sheet: #fffdf8;
+    --ink: #262219;
+    --ink-2: #5a5546;
+    --ink-3: #98917e;
+    --line: #e2dccb;
+    --line-soft: #ece7d9;
+    --accent: #2e4a73;
+    --accent-soft: #e9edf3;
+    --green: #3e7c4f;
+    --green-soft: #e8f0e9;
+    --amber: #a66a1c;
+    --amber-soft: #f8eeda;
+    --red: #b03a2e;
+    --red-soft: #faebe8;
+    --shu: #c2402a;
+    --serif: "Hiragino Mincho ProN", "Hiragino Mincho Pro", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+    --sans: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--sapBackgroundColor, #f5f6f7); color: var(--cb-ink);
-         font-family: "72", "72full", -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
-         -webkit-font-smoothing: antialiased; }
-  .cb-main { max-width: 1060px; margin: 0 auto; padding: 2rem 1.25rem 5rem; }
-
-  /* shellbar */
-  .cb-shell { display: flex; align-items: center; gap: 0.625rem; height: 3rem; padding: 0 1rem;
-              background: var(--sapShellColor, #fff); border-bottom: 1px solid var(--cb-line); }
-  .cb-shell-name { font-size: 1rem; font-weight: 700; color: var(--sapShell_TextColor, #131e29); }
-  .cb-logo { display: inline-flex; align-items: center; justify-content: center;
-             width: 1.75rem; height: 1.75rem; border-radius: 0.375rem;
-             background: var(--cb-accent); color: #fff; font-weight: 700; font-size: 0.8125rem; letter-spacing: 0.02em; }
-
-  /* generic */
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--sans);
+         font-size: 15px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .cb-main { max-width: 920px; margin: 0 auto; padding: 2.75rem 1.25rem 6rem; }
   .cb-hidden { display: none !important; }
-  .cb-muted { color: var(--cb-sub); }
-  .cb-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
-  .cb-panel { background: var(--cb-panel); border: 1px solid var(--cb-line); border-radius: 0.75rem;
-              box-shadow: var(--sapContent_Shadow0, 0 1px 2px rgba(19,30,41,.06)); }
-  .cb-empty { padding: 3.5rem 1.5rem; text-align: center; color: var(--cb-sub);
-              border: 1px dashed var(--cb-line); border-radius: 0.75rem; font-size: 0.9375rem; }
-  .cb-pagehead { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1.25rem; }
-  .cb-pagehead .fd-title { margin: 0; }
+  .cb-muted { color: var(--ink-2); }
 
-  /* stepper */
-  .cb-steps { display: flex; margin: 0.25rem 0 0; }
-  .cb-step { flex: 1; position: relative; text-align: center; padding-top: 0.125rem; }
-  .cb-step::before { content: ""; position: absolute; top: 0.8125rem; left: -50%; width: 100%; height: 2px;
-                     background: var(--cb-line); }
+  /* header */
+  .cb-shell { display: flex; align-items: center; gap: 0.7rem; height: 3.5rem; padding: 0 1.25rem;
+              background: var(--paper); border-bottom: 1px solid var(--line); }
+  .cb-seal { display: inline-flex; align-items: center; justify-content: center;
+             width: 1.8rem; height: 1.8rem; border-radius: 0.3rem; background: var(--shu); color: #fff;
+             font-family: var(--serif); font-size: 1rem; font-weight: 600; line-height: 1; }
+  .cb-shell-name { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; letter-spacing: 0.04em; }
+
+  /* typography */
+  .cb-h1 { font-family: var(--serif); font-size: 1.9rem; font-weight: 600; line-height: 1.3; margin: 0; letter-spacing: 0.02em; }
+  .cb-read { font-size: 1.02rem; line-height: 1.9; }
+
+  /* controls */
+  .btn { appearance: none; border: 1px solid var(--line); background: var(--sheet); color: var(--ink);
+         font: inherit; font-size: 0.9rem; padding: 0.5rem 1.1rem; border-radius: 0.5rem; cursor: pointer;
+         transition: border-color .15s, background .15s, transform .05s; }
+  .btn:hover { border-color: var(--ink-3); }
+  .btn:active { transform: translateY(1px); }
+  .btn:disabled { opacity: 0.55; cursor: default; }
+  .btn--primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .btn--primary:hover { background: #3a3527; border-color: #3a3527; }
+  .btn--ghost { border-color: transparent; background: transparent; color: var(--accent); padding-left: 0.4rem; padding-right: 0.4rem; }
+  .btn--ghost:hover { border-color: transparent; text-decoration: underline; }
+  .input { font: inherit; font-size: 0.95rem; color: var(--ink); background: var(--sheet);
+           border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.55rem 0.8rem; }
+  .input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .input::placeholder { color: var(--ink-3); }
+  textarea.input { width: 100%; min-height: 8.5rem; resize: vertical; line-height: 2;
+                   background-image: repeating-linear-gradient(transparent, transparent 31px, var(--line-soft) 31px, var(--line-soft) 32px);
+                   background-attachment: local; }
+  .cb-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+
+  /* sheets and states */
+  .sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 0.9rem;
+           box-shadow: 0 1px 2px rgba(38,34,25,.05), 0 8px 24px rgba(38,34,25,.04); }
+  .cb-empty { padding: 3.25rem 1.5rem; text-align: center; color: var(--ink-2);
+              border: 1px dashed var(--line); border-radius: 0.9rem; font-family: var(--serif); font-size: 1rem; }
+  .cb-alert { border-radius: 0.6rem; padding: 0.8rem 1.1rem; font-size: 0.92rem; margin-bottom: 1.25rem; }
+  .cb-alert--error { background: var(--red-soft); color: var(--red); }
+  .cb-alert--warn { background: var(--amber-soft); color: #7c4d10; }
+  .cb-pagehead { margin-bottom: 1.5rem; }
+
+  /* progress (table-of-contents style) */
+  .cb-steps { display: flex; }
+  .cb-step { flex: 1; position: relative; text-align: center; }
+  .cb-step::before { content: ""; position: absolute; top: 0.8rem; left: -50%; width: 100%; height: 1px; background: var(--line); }
   .cb-step:first-child::before { display: none; }
-  .cb-step.done::before { background: var(--cb-good); }
+  .cb-step.done::before { background: var(--green); }
   .cb-step-dot { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center;
-                 width: 1.625rem; height: 1.625rem; border-radius: 50%;
-                 border: 2px solid var(--cb-line); background: var(--cb-panel);
-                 color: var(--cb-sub); font-size: 0.75rem; font-weight: 700; }
-  .cb-step.done .cb-step-dot { background: var(--cb-good); border-color: var(--cb-good); color: #fff; }
-  .cb-step.current .cb-step-dot { border-color: var(--cb-accent); color: var(--cb-accent);
-                                  box-shadow: 0 0 0 3px var(--cb-tint); }
-  .cb-step-label { display: block; margin-top: 0.375rem; font-size: 0.8125rem; color: var(--cb-sub); }
-  .cb-step.done .cb-step-label { color: var(--cb-ink); }
-  .cb-step.current .cb-step-label { color: var(--cb-accent); font-weight: 700; }
-  .cb-steps--compact .cb-step-dot { width: 1.25rem; height: 1.25rem; font-size: 0.625rem; border-width: 2px; }
-  .cb-steps--compact .cb-step::before { top: 0.625rem; }
-  .cb-steps--compact .cb-step-label { font-size: 0.6875rem; margin-top: 0.25rem; }
+                 width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 1px solid var(--line);
+                 background: var(--sheet); color: var(--ink-3); font-family: var(--serif); font-size: 0.8rem; }
+  .cb-step.done .cb-step-dot { background: var(--green); border-color: var(--green); color: #fff; font-family: var(--sans); font-size: 0.75rem; }
+  .cb-step.current .cb-step-dot { border: 2px solid var(--accent); color: var(--accent); font-weight: 700; }
+  .cb-step-label { display: block; margin-top: 0.4rem; font-size: 0.8rem; color: var(--ink-3); }
+  .cb-step.done .cb-step-label { color: var(--ink-2); }
+  .cb-step.current .cb-step-label { color: var(--accent); font-weight: 700; }
+  .cb-steps--compact .cb-step-dot { width: 1.3rem; height: 1.3rem; font-size: 0.68rem; }
+  .cb-steps--compact .cb-step::before { top: 0.65rem; }
+  .cb-steps--compact .cb-step-label { font-size: 0.7rem; margin-top: 0.3rem; }
 
-  /* project cards */
-  .cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
-  .cb-project { padding: 1.25rem 1.25rem 1rem; cursor: pointer; transition: box-shadow .15s ease, border-color .15s ease; }
-  .cb-project:hover { border-color: var(--cb-accent); box-shadow: var(--sapContent_Shadow1, 0 4px 16px rgba(19,30,41,.12)); }
-  .cb-project-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 1rem; }
-  .cb-project-name { font-size: 1.125rem; font-weight: 700; line-height: 1.35; }
-  .cb-project-arrow { color: var(--cb-sub); font-size: 1.25rem; line-height: 1; }
-  .cb-project-foot { margin-top: 0.875rem; min-height: 1.25rem; }
-  .cb-create { padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
-  .cb-create .cb-actions { margin: 0; }
-  .cb-create input { flex: 1 1 16rem; }
+  /* project list */
+  .cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 1.1rem; }
+  .cb-create { padding: 1.1rem 1.25rem; margin-bottom: 1.6rem; }
+  .cb-create .input { flex: 1 1 16rem; }
+  .cb-project { padding: 1.4rem 1.4rem 1.15rem; cursor: pointer; transition: box-shadow .15s, transform .15s; }
+  .cb-project:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(38,34,25,.06), 0 16px 32px rgba(38,34,25,.09); }
+  .cb-project-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 1.15rem; }
+  .cb-project-name { font-family: var(--serif); font-size: 1.25rem; font-weight: 600; line-height: 1.4; }
+  .cb-project-arrow { color: var(--ink-3); font-size: 1.3rem; line-height: 1.2; }
+  .cb-project-foot { margin-top: 1rem; min-height: 1.3rem; }
 
-  /* project header */
-  .cb-back { margin-bottom: 0.5rem; }
-  .cb-projhead { margin-bottom: 1.5rem; }
-  .cb-projhead .fd-title { margin: 0 0 1.25rem; }
-  .cb-projhead .cb-steps { max-width: 44rem; }
-
-  /* tabs */
-  .fd-tabs { margin-bottom: 1.5rem; }
+  /* project header and tabs */
+  .cb-back { margin-bottom: 0.75rem; }
+  .cb-projhead { margin-bottom: 1.75rem; }
+  .cb-projhead .cb-h1 { margin-bottom: 1.5rem; }
+  .cb-projhead .cb-steps { max-width: 42rem; }
+  .cb-tabs { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--line); margin-bottom: 1.75rem; overflow-x: auto; }
+  .cb-tab { appearance: none; border: none; background: none; font: inherit; cursor: pointer;
+            font-family: var(--serif); font-size: 1.02rem; color: var(--ink-3);
+            padding: 0.6rem 1rem; margin-bottom: -1px; border-bottom: 2px solid transparent; white-space: nowrap; }
+  .cb-tab:hover { color: var(--ink); }
+  .cb-tab.is-selected { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+  .cb-tab:disabled { opacity: 0.45; cursor: default; }
 
   /* sources */
-  .cb-source-form { padding: 1rem 1.25rem; margin-bottom: 1rem; }
-  .cb-source-form .cb-actions { margin: 0; }
+  .cb-source-form { padding: 1.1rem 1.25rem; margin-bottom: 1.1rem; }
   .cb-rows { overflow: hidden; }
   .cb-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-            padding: 0.875rem 1.25rem; border-top: 1px solid var(--cb-line); }
+            padding: 0.95rem 1.3rem; border-top: 1px solid var(--line-soft); }
   .cb-row:first-child { border-top: none; }
   .cb-row-title { font-weight: 600; }
-  .cb-row-meta { color: var(--cb-sub); font-size: 0.8125rem; white-space: nowrap; }
+  .cb-row-meta { color: var(--ink-3); font-size: 0.82rem; white-space: nowrap; }
 
   /* skeleton map */
-  .cb-layer-head { display: flex; align-items: baseline; gap: 0.625rem; margin: 1.75rem 0 0.75rem; }
-  .cb-layer-head:first-child { margin-top: 0.5rem; }
-  .cb-layer-name { font-size: 1rem; font-weight: 700; }
-  .cb-layer-count { color: var(--cb-sub); font-size: 0.8125rem; }
-  .cb-node { padding: 1rem 1.25rem; margin-bottom: 0.625rem; border-left: 4px solid var(--cb-line); }
-  .cb-node--foundation { border-left-color: #8a97a3; }
-  .cb-node--core { border-left-color: var(--cb-accent); }
-  .cb-node--branch { border-left-color: #c3ced7; }
-  .cb-node-name { font-size: 1rem; font-weight: 700; }
-  .cb-node-desc { margin: 0.375rem 0 0; line-height: 1.65; color: #2b3a47; }
-  .cb-cites { margin-top: 0.75rem; padding-top: 0.625rem; border-top: 1px solid var(--cb-line); }
-  .cb-cite { display: inline-block; margin: 0 0.375rem 0.25rem 0; padding: 0.125rem 0.625rem; border-radius: 1rem;
-             background: var(--cb-tint); color: var(--cb-accent); font-size: 0.75rem; font-weight: 600; }
-  .cb-rel-row { display: flex; align-items: center; gap: 0.625rem; padding: 0.625rem 1.25rem;
-                border-top: 1px solid var(--cb-line); flex-wrap: wrap; }
+  .cb-layer-head { display: flex; align-items: baseline; gap: 0.7rem; margin: 2rem 0 0.85rem; }
+  .cb-layer-head:first-child { margin-top: 0.25rem; }
+  .cb-layer-name { font-family: var(--serif); font-size: 1.2rem; font-weight: 600; }
+  .cb-layer-count { color: var(--ink-3); font-size: 0.82rem; }
+  .cb-layer-rule { flex: 1; border-top: 1px solid var(--line); transform: translateY(-0.25rem); }
+  .cb-node { padding: 1.2rem 1.4rem; margin-bottom: 0.7rem; }
+  .cb-node-name { font-family: var(--serif); font-size: 1.18rem; font-weight: 600; }
+  .cb-node-desc { margin: 0.45rem 0 0; }
+  .cb-cites { margin-top: 0.9rem; padding-top: 0.7rem; border-top: 1px solid var(--line-soft); text-align: right; }
+  .cb-cite { display: inline-block; margin: 0 0 0.3rem 0.4rem; padding: 0.1rem 0.65rem; border-radius: 1rem;
+             border: 1px solid var(--line); color: var(--ink-2); font-size: 0.75rem; }
+  .cb-rel-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.7rem 1.3rem;
+                border-top: 1px solid var(--line-soft); flex-wrap: wrap; }
   .cb-rel-row:first-child { border-top: none; }
   .cb-rel-name { font-weight: 600; }
-  .cb-rel-pill { padding: 0.0625rem 0.5rem; border-radius: 1rem; background: #eef1f3; color: var(--cb-sub);
-                 font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
-  .cb-rel-arrow { color: var(--cb-sub); }
+  .cb-rel-pill { padding: 0.08rem 0.55rem; border-radius: 1rem; background: var(--accent-soft); color: var(--accent);
+                 font-size: 0.74rem; font-weight: 700; white-space: nowrap; }
+  .cb-rel-arrow { color: var(--ink-3); }
 
   /* controversies */
-  .cb-contro { padding: 1.25rem; margin-bottom: 1rem; }
-  .cb-contro-topic { font-size: 1.125rem; font-weight: 700; margin: 0; }
-  .cb-contro-summary { margin: 0.5rem 0 0; line-height: 1.65; color: #2b3a47; }
-  .cb-positions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0.875rem; margin-top: 1rem; }
-  .cb-position { background: var(--sapBackgroundColor, #f5f6f7); border-radius: 0.5rem; padding: 1rem 1.125rem; }
-  .cb-position-stance { font-weight: 700; margin-bottom: 0.5rem; }
-  .cb-claim-label { display: block; font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
-                    color: var(--cb-sub); margin: 0.75rem 0 0.25rem; }
-  .cb-claim { margin: 0; line-height: 1.6; font-size: 0.9375rem; }
-  .cb-position .cb-cites { border-top-color: #dde3e8; }
-  .cb-unresolved { margin-top: 1rem; }
+  .cb-contro { padding: 1.5rem 1.6rem; margin-bottom: 1.1rem; }
+  .cb-contro-topic { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; margin: 0; line-height: 1.45; }
+  .cb-contro-summary { margin: 0.6rem 0 0; }
+  .cb-positions { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 0.9rem; margin-top: 1.2rem; }
+  .cb-position { background: #f3efe3; border-radius: 0.7rem; padding: 1.15rem 1.25rem; }
+  .cb-position-stance { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin-bottom: 0.4rem; }
+  .cb-claim-label { display: block; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.14em;
+                    color: var(--ink-3); margin: 0.85rem 0 0.2rem; }
+  .cb-claim { margin: 0; font-size: 0.96rem; line-height: 1.85; }
+  .cb-position .cb-cites { border-top-color: var(--line); }
+  .cb-unresolved { margin-top: 1.1rem; margin-bottom: 0; }
 
   /* test */
-  .cb-q { padding: 1.25rem; margin-bottom: 1rem; }
-  .cb-q-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
-  .cb-q-num { font-size: 1.25rem; font-weight: 700; color: var(--cb-sub); }
-  .cb-q-tag { padding: 0.125rem 0.625rem; border-radius: 1rem; font-size: 0.75rem; font-weight: 700;
-              background: #eef1f3; color: var(--cb-sub); }
-  .cb-q-tag--concept { background: var(--cb-tint); color: var(--cb-accent); }
-  .cb-q-tag--causal { background: #fdeee3; color: #a93e00; }
-  .cb-q-tag--application { background: #e6f4ec; color: #0c5c2e; }
-  .cb-q-tag--controversy { background: #fbe9ec; color: #8f1022; }
-  .cb-q-body { margin: 0 0 1rem; font-size: 1rem; line-height: 1.7; }
-  textarea.fd-textarea { width: 100%; min-height: 7.5rem; line-height: 1.6; }
-  .cb-q-actions { display: flex; justify-content: flex-end; margin-top: 0.75rem; }
-  .cb-grade { margin-top: 1rem; border-top: 1px solid var(--cb-line); padding-top: 1rem; }
+  .cb-q { padding: 1.5rem 1.6rem; margin-bottom: 1.1rem; }
+  .cb-q-head { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.7rem; }
+  .cb-q-num { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+  .cb-q-tag { padding: 0.12rem 0.65rem; border-radius: 1rem; font-size: 0.74rem; font-weight: 700;
+              border: 1px solid var(--line); color: var(--ink-2); }
+  .cb-q-tag--concept { border-color: #b9c6d8; color: var(--accent); background: var(--accent-soft); }
+  .cb-q-tag--causal { border-color: #e3c9a8; color: var(--amber); background: var(--amber-soft); }
+  .cb-q-tag--application { border-color: #b5d2bd; color: var(--green); background: var(--green-soft); }
+  .cb-q-tag--controversy { border-color: #e0b3ac; color: var(--red); background: var(--red-soft); }
+  .cb-q-body { margin: 0 0 1.1rem; font-size: 1.05rem; line-height: 1.9; }
+  .cb-q-actions { display: flex; justify-content: flex-end; margin-top: 0.8rem; }
+  .cb-grade { margin-top: 1.2rem; border-top: 1px solid var(--line); padding-top: 1.1rem; }
   .cb-score { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
-              padding: 0.4375rem 0; border-bottom: 1px solid #edf0f2; }
-  .cb-score:last-child { border-bottom: none; }
-  .cb-score-point { display: flex; align-items: center; gap: 0.5rem; }
-  .cb-dot { width: 0.5625rem; height: 0.5625rem; border-radius: 50%; flex: none; }
-  .cb-dot--2 { background: var(--cb-good); }
-  .cb-dot--1 { background: var(--cb-warn); }
-  .cb-dot--0 { background: var(--cb-bad); }
-  .cb-grade h4 { margin: 1rem 0 0.375rem; font-size: 0.875rem; }
-  .cb-grade ul { margin: 0; padding-left: 1.25rem; line-height: 1.65; }
-  .cb-grade p { line-height: 1.65; }
-  .cb-model { background: var(--sapBackgroundColor, #f5f6f7); border-radius: 0.5rem; padding: 0.875rem 1rem; margin-top: 0.5rem; }
-  .cb-model p { margin: 0; }
-  .cb-verdict { margin-top: 1rem; }
-  .cb-lockbar { margin-bottom: 1rem; }
+              padding: 0.45rem 0; border-bottom: 1px solid var(--line-soft); }
+  .cb-score:last-of-type { border-bottom: none; }
+  .cb-score-point { display: flex; align-items: center; gap: 0.55rem; }
+  .cb-dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; flex: none; }
+  .cb-dot--2 { background: var(--green); }
+  .cb-dot--1 { background: var(--amber); }
+  .cb-dot--0 { background: var(--red); }
+  .cb-status { font-size: 0.82rem; font-weight: 700; white-space: nowrap; }
+  .cb-status--positive { color: var(--green); }
+  .cb-status--critical { color: var(--amber); }
+  .cb-status--negative { color: var(--red); }
+  .cb-grade h4 { font-family: var(--serif); margin: 1.1rem 0 0.35rem; font-size: 0.98rem; }
+  .cb-grade ul { margin: 0; padding-left: 1.3rem; line-height: 1.8; }
+  .cb-grade p { line-height: 1.85; margin: 0.3rem 0; }
+  .cb-model { background: #f3efe3; border-radius: 0.7rem; padding: 1rem 1.2rem; margin-top: 0.45rem; }
+  .cb-model p { margin: 0; line-height: 1.9; }
+  .cb-verdict { margin-top: 1.1rem; display: flex; align-items: center; gap: 0.8rem; }
+
+  /* the seal: shown when a gap is resolved */
+  .cb-hanko { display: inline-flex; align-items: center; justify-content: center; flex: none;
+              width: 3rem; height: 3rem; border: 2.5px solid var(--shu); border-radius: 0.45rem;
+              color: var(--shu); font-family: var(--serif); font-weight: 600; font-size: 0.92rem;
+              transform: rotate(-6deg); opacity: 0.92; letter-spacing: 0.1em; padding-left: 0.1em; }
 
   /* gaps */
-  .cb-gap { padding: 1.125rem 1.25rem; margin-bottom: 0.625rem; }
+  .cb-gap { padding: 1.25rem 1.4rem; margin-bottom: 0.7rem; }
   .cb-gap-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-  .cb-gap-concept { font-size: 1rem; font-weight: 700; }
-  .cb-gap-detail { white-space: pre-line; margin: 0.5rem 0 0; line-height: 1.65; }
-  .cb-retest-area { margin-top: 1rem; border-top: 1px solid var(--cb-line); padding-top: 1rem; }
-  .cb-retest-q { margin: 0 0 0.75rem; line-height: 1.7; }
+  .cb-gap-concept { font-family: var(--serif); font-size: 1.12rem; font-weight: 600; }
+  .cb-gap-detail { white-space: pre-line; margin: 0.55rem 0 0; line-height: 1.85; color: var(--ink-2); }
+  .cb-retest-area { margin-top: 1.1rem; border-top: 1px solid var(--line); padding-top: 1.1rem; }
+  .cb-retest-q { margin: 0 0 0.8rem; }
 
-  .cb-tabpanel > .cb-actions { margin-bottom: 1rem; }
-  #cb-error { margin-bottom: 1rem; }
+  .cb-tabpanel > .cb-actions { margin-bottom: 1.25rem; }
+  #cb-error { margin-bottom: 1.25rem; }
+  @media (max-width: 640px) {
+    .cb-main { padding: 2rem 1rem 4rem; }
+    .cb-h1 { font-size: 1.55rem; }
+    .cb-contro, .cb-q { padding: 1.2rem 1.1rem; }
+  }
 </style>
 </head>
 <body>
-<header class="fd-shellbar">
-  <div class="fd-shellbar__group fd-shellbar__group--product">
-    <span class="fd-shellbar__product"><span class="cb-logo">CB</span><span class="fd-shellbar__product-name">ClosedBook</span></span>
-  </div>
+<header class="cb-shell">
+  <span class="cb-seal">閉</span><span class="cb-shell-name">ClosedBook</span>
 </header>
 
 <main class="cb-main">
-  <div id="cb-error" class="fd-message-strip fd-message-strip--negative cb-hidden" role="alert"></div>
+  <div id="cb-error" class="cb-alert cb-alert--error cb-hidden" role="alert"></div>
 
   <!-- Projects -->
   <section id="view-projects">
-    <div class="cb-pagehead"><h1 class="fd-title fd-title--h1">分野</h1></div>
-    <div class="cb-panel cb-create">
+    <div class="cb-pagehead"><h1 class="cb-h1">分野</h1></div>
+    <div class="sheet cb-create">
       <form id="form-project" class="cb-actions">
-        <input id="input-project-name" class="fd-input" type="text" placeholder="新しい分野の名前" required>
-        <button class="fd-button fd-button--emphasized" type="submit">作成</button>
+        <input id="input-project-name" class="input" type="text" placeholder="新しい分野の名前" required>
+        <button class="btn btn--primary" type="submit">作成</button>
       </form>
     </div>
     <div id="project-list" class="cb-grid"></div>
@@ -196,26 +236,26 @@
 
   <!-- Project -->
   <section id="view-project" class="cb-hidden">
-    <div class="cb-back"><button id="btn-back" class="fd-button fd-button--transparent">← 分野一覧</button></div>
+    <div class="cb-back"><button id="btn-back" class="btn btn--ghost">← 分野一覧</button></div>
     <div class="cb-projhead">
-      <h1 id="project-name" class="fd-title fd-title--h1"></h1>
+      <h1 id="project-name" class="cb-h1"></h1>
       <div id="phase-steps"></div>
     </div>
 
-    <ul class="fd-tabs" role="tablist">
-      <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="sources" role="tab">資料</a></li>
-      <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="map" role="tab">骨格</a></li>
-      <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="controversies" role="tab">論争</a></li>
-      <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="test" role="tab">テスト</a></li>
-      <li class="fd-tabs__item"><a class="fd-tabs__link" data-tab="gaps" role="tab">穴</a></li>
-    </ul>
+    <nav class="cb-tabs" role="tablist">
+      <button class="cb-tab" data-tab="sources" role="tab">資料</button>
+      <button class="cb-tab" data-tab="map" role="tab">骨格</button>
+      <button class="cb-tab" data-tab="controversies" role="tab">論争</button>
+      <button class="cb-tab" data-tab="test" role="tab">テスト</button>
+      <button class="cb-tab" data-tab="gaps" role="tab">穴</button>
+    </nav>
 
     <div id="tab-sources" class="cb-tabpanel">
-      <div class="cb-panel cb-source-form">
+      <div class="sheet cb-source-form">
         <form id="form-source" class="cb-actions">
-          <input id="input-source-title" class="fd-input" type="text" placeholder="資料のタイトル（任意）" style="max-width:16rem">
-          <input id="input-source-file" class="fd-input" type="file" accept=".md,.txt,.markdown" required>
-          <button class="fd-button fd-button--emphasized" type="submit">取り込む</button>
+          <input id="input-source-title" class="input" type="text" placeholder="資料のタイトル（任意）" style="max-width:16rem">
+          <input id="input-source-file" class="input" type="file" accept=".md,.txt,.markdown" required>
+          <button class="btn btn--primary" type="submit">取り込む</button>
         </form>
       </div>
       <div id="source-list"></div>
@@ -223,25 +263,25 @@
 
     <div id="tab-map" class="cb-tabpanel cb-hidden">
       <div class="cb-actions">
-        <button id="btn-phase1" class="fd-button fd-button--emphasized">骨格を作る</button>
+        <button id="btn-phase1" class="btn btn--primary">骨格を作る</button>
       </div>
       <div id="map-view"></div>
     </div>
 
     <div id="tab-controversies" class="cb-tabpanel cb-hidden">
       <div class="cb-actions">
-        <button id="btn-phase2" class="fd-button fd-button--emphasized">論争を検出する</button>
+        <button id="btn-phase2" class="btn btn--primary">論争を検出する</button>
       </div>
       <div id="controversy-view"></div>
     </div>
 
     <div id="tab-test" class="cb-tabpanel cb-hidden">
-      <div id="lockbar" class="fd-message-strip fd-message-strip--warning cb-lockbar cb-hidden">
+      <div id="lockbar" class="cb-alert cb-alert--warn cb-hidden">
         資料ロック中。回答が終わるまで資料は開けない。
       </div>
       <div class="cb-actions">
-        <button id="btn-phase3" class="fd-button fd-button--emphasized">問題を生成する</button>
-        <button id="btn-answer-mode" class="fd-button cb-hidden">回答をはじめる</button>
+        <button id="btn-phase3" class="btn btn--primary">問題を生成する</button>
+        <button id="btn-answer-mode" class="btn cb-hidden">回答をはじめる</button>
       </div>
       <div id="question-list"></div>
     </div>
@@ -316,13 +356,13 @@ async function loadProjects() {
       } catch (e) { /* count is decorative */ }
     }
     const card = document.createElement("div");
-    card.className = "cb-panel cb-project";
+    card.className = "sheet cb-project";
     card.innerHTML =
       '<div class="cb-project-head"><span class="cb-project-name">' + esc(project.name) + '</span>' +
       '<span class="cb-project-arrow">›</span></div>' +
       stepsHtml(project.phase, true) +
       '<div class="cb-project-foot">' +
-      (gapCount > 0 ? '<span class="fd-object-status fd-object-status--negative">未解消の穴 ' + gapCount + "</span>" : "") +
+      (gapCount > 0 ? '<span class="cb-status cb-status--negative">未解消の穴 ' + gapCount + "</span>" : "") +
       "</div>";
     card.addEventListener("click", () => openProject(project.id));
     list.appendChild(card);
@@ -379,7 +419,7 @@ function switchTab(tab) {
     return;
   }
   state.tab = tab;
-  document.querySelectorAll(".fd-tabs__link").forEach((link) => {
+  document.querySelectorAll(".cb-tab").forEach((link) => {
     link.setAttribute("aria-selected", link.dataset.tab === tab ? "true" : "false");
     link.classList.toggle("is-selected", link.dataset.tab === tab);
   });
@@ -392,7 +432,7 @@ function switchTab(tab) {
   if (tab === "gaps") loadGaps();
 }
 
-document.querySelectorAll(".fd-tabs__link").forEach((link) => {
+document.querySelectorAll(".cb-tab").forEach((link) => {
   link.addEventListener("click", () => switchTab(link.dataset.tab));
 });
 
@@ -407,7 +447,7 @@ async function loadSources() {
     el.innerHTML = '<div class="cb-empty">資料がまだない。Markdown かテキストを取り込む。</div>';
     return;
   }
-  el.innerHTML = '<div class="cb-panel cb-rows">' + sources.map((s) =>
+  el.innerHTML = '<div class="sheet cb-rows">' + sources.map((s) =>
     '<div class="cb-row"><span class="cb-row-title">' + esc(s.title) + "</span>" +
     (s.chunk_count != null ? '<span class="cb-row-meta">' + s.chunk_count + " チャンク</span>" : "") +
     "</div>"
@@ -463,11 +503,11 @@ async function loadMap() {
     const nodes = map.nodes.filter((n) => n.layer === key);
     if (nodes.length === 0) continue;
     html += '<div class="cb-layer-head"><span class="cb-layer-name">' + label + '</span>' +
-      '<span class="cb-layer-count">' + nodes.length + " 件</span></div>";
+      '<span class="cb-layer-count">' + nodes.length + ' 件</span><span class="cb-layer-rule"></span></div>';
     html += nodes.map((n) =>
-      '<div class="cb-panel cb-node cb-node--' + key + '">' +
+      '<div class="sheet cb-node">' +
       '<span class="cb-node-name">' + esc(n.name) + "</span>" +
-      (n.description ? '<p class="cb-node-desc">' + esc(n.description) + "</p>" : "") +
+      (n.description ? '<p class="cb-node-desc cb-read">' + esc(n.description) + "</p>" : "") +
       citesHtml(n.citations) +
       "</div>"
     ).join("");
@@ -476,7 +516,7 @@ async function loadMap() {
   const relLabel = { prerequisite: "前提", causal: "因果", contrast: "対比", part_of: "一部" };
   if (map.edges && map.edges.length > 0) {
     html += '<div class="cb-layer-head"><span class="cb-layer-name">関係</span>' +
-      '<span class="cb-layer-count">' + map.edges.length + ' 件</span></div><div class="cb-panel cb-rows">' +
+      '<span class="cb-layer-count">' + map.edges.length + ' 件</span><span class="cb-layer-rule"></span></div><div class="sheet cb-rows">' +
       map.edges.map((e) =>
         '<div class="cb-rel-row"><span class="cb-rel-name">' + esc(nameOf(e.from_node)) + '</span>' +
         '<span class="cb-rel-pill">' + esc(relLabel[e.relation] || e.relation) + '</span>' +
@@ -513,9 +553,9 @@ async function loadControversies() {
     return;
   }
   el.innerHTML = controversies.map((item) =>
-    '<div class="cb-panel cb-contro">' +
+    '<div class="sheet cb-contro">' +
     '<h3 class="cb-contro-topic">' + esc(item.topic) + "</h3>" +
-    (item.summary ? '<p class="cb-contro-summary">' + esc(item.summary) + "</p>" : "") +
+    (item.summary ? '<p class="cb-contro-summary cb-read">' + esc(item.summary) + "</p>" : "") +
     '<div class="cb-positions">' + item.positions.map((p) =>
       '<div class="cb-position"><div class="cb-position-stance">' + esc(p.stance) + "</div>" +
       claimBlock("主張", p.claims) +
@@ -524,7 +564,7 @@ async function loadControversies() {
       citesHtml(p.citations) +
       "</div>"
     ).join("") + "</div>" +
-    (item.unresolved ? '<div class="fd-message-strip fd-message-strip--warning cb-unresolved">未決着の理由: ' + esc(item.unresolved) + "</div>" : "") +
+    (item.unresolved ? '<div class="cb-alert cb-alert--warn cb-unresolved">未決着の理由: ' + esc(item.unresolved) + "</div>" : "") +
     "</div>"
   ).join("");
 }
@@ -566,13 +606,13 @@ async function loadQuestions() {
   el.innerHTML = "";
   questions.forEach((q, i) => {
     const card = document.createElement("div");
-    card.className = "cb-panel cb-q";
+    card.className = "sheet cb-q";
     card.innerHTML =
       '<div class="cb-q-head"><span class="cb-q-num">Q' + (i + 1) + '</span>' +
       '<span class="cb-q-tag cb-q-tag--' + esc(q.tag) + '">' + esc(TAG_LABEL[q.tag] || q.tag) + "</span></div>" +
       '<p class="cb-q-body">' + esc(q.body) + "</p>" +
-      '<textarea class="fd-textarea" placeholder="自分の言葉で答える" disabled></textarea>' +
-      '<div class="cb-q-actions"><button class="fd-button fd-button--emphasized cb-grade-btn" disabled>採点する</button></div>' +
+      '<textarea class="input" placeholder="自分の言葉で答える" disabled></textarea>' +
+      '<div class="cb-q-actions"><button class="btn btn--primary cb-grade-btn" disabled>採点する</button></div>' +
       '<div class="cb-grade-result"></div>';
     card.querySelector(".cb-grade-btn").addEventListener("click", async (ev) => {
       const answer = card.querySelector("textarea").value.trim();
@@ -597,10 +637,10 @@ async function loadQuestions() {
 function gradeHtml(result) {
   const g = result.grade;
   const scoreLabel = (v) => v === 2
-    ? '<span class="fd-object-status fd-object-status--positive">十分</span>'
+    ? '<span class="cb-status cb-status--positive">十分</span>'
     : v === 1
-      ? '<span class="fd-object-status fd-object-status--critical">浅い</span>'
-      : '<span class="fd-object-status fd-object-status--negative">不足</span>';
+      ? '<span class="cb-status cb-status--critical">浅い</span>'
+      : '<span class="cb-status cb-status--negative">不足</span>';
   let html = '<div class="cb-grade">' + Object.entries(g.scores).map(([point, v]) =>
     '<div class="cb-score"><span class="cb-score-point"><span class="cb-dot cb-dot--' + v + '"></span>' + esc(point) + "</span>" + scoreLabel(v) + "</div>"
   ).join("");
@@ -614,10 +654,10 @@ function gradeHtml(result) {
   if (result.model_answer) html += '<h4>模範解答</h4><div class="cb-model"><p>' + esc(result.model_answer) + "</p></div>";
   if (result.retest) {
     html += result.retest.passed
-      ? '<p class="cb-verdict"><span class="fd-object-status fd-object-status--positive">再テスト合格。穴は解消した。</span></p>'
-      : '<p class="cb-verdict"><span class="fd-object-status fd-object-status--negative">再テスト不合格。穴は残る。</span></p>';
+      ? '<div class="cb-verdict"><span class="cb-hanko">解消</span><span class="cb-status cb-status--positive">再テスト合格。穴は解消した。</span></div>'
+      : '<p class="cb-verdict"><span class="cb-status cb-status--negative">再テスト不合格。穴は残る。</span></p>';
   } else if (result.gap_opened) {
-    html += '<p class="cb-verdict"><span class="fd-object-status fd-object-status--critical">理解の穴として記録した。</span></p>';
+    html += '<p class="cb-verdict"><span class="cb-status cb-status--critical">理解の穴として記録した。</span></p>';
   }
   return html + "</div>";
 }
@@ -632,9 +672,9 @@ $("#btn-phase3").addEventListener("click", async (ev) => {
 /* ---------- gaps (Phase 4) and retest (Phase 5) ---------- */
 
 const GAP_STATUS = {
-  open: '<span class="fd-object-status fd-object-status--negative">未解消</span>',
-  retesting: '<span class="fd-object-status fd-object-status--critical">再テスト中</span>',
-  closed: '<span class="fd-object-status fd-object-status--positive">解消済み</span>',
+  open: '<span class="cb-status cb-status--negative">未解消</span>',
+  retesting: '<span class="cb-status cb-status--critical">再テスト中</span>',
+  closed: '<span class="cb-hanko" style="width:2.3rem;height:2.3rem;font-size:0.74rem">解消</span>',
 };
 
 async function loadGaps() {
@@ -648,13 +688,13 @@ async function loadGaps() {
   el.innerHTML = "";
   for (const gap of gaps) {
     const card = document.createElement("div");
-    card.className = "cb-panel cb-gap";
+    card.className = "sheet cb-gap";
     let inner =
       '<div class="cb-gap-head"><span class="cb-gap-concept">' + esc(gap.concept) + "</span>" +
       (GAP_STATUS[gap.status] || esc(gap.status)) + "</div>" +
-      (gap.detail ? '<p class="cb-gap-detail cb-muted">' + esc(gap.detail) + "</p>" : "");
+      (gap.detail ? '<p class="cb-gap-detail">' + esc(gap.detail) + "</p>" : "");
     if (gap.status === "open") {
-      inner += '<div class="cb-actions" style="margin-top:0.75rem"><button class="fd-button fd-button--emphasized cb-retest-btn">再テスト</button></div><div class="cb-retest-area cb-hidden"></div>';
+      inner += '<div class="cb-actions" style="margin-top:0.8rem"><button class="btn btn--primary cb-retest-btn">再テスト</button></div><div class="cb-retest-area cb-hidden"></div>';
     }
     card.innerHTML = inner;
     const btn = card.querySelector(".cb-retest-btn");
@@ -670,9 +710,9 @@ async function loadGaps() {
           const area = card.querySelector(".cb-retest-area");
           area.classList.remove("cb-hidden");
           area.innerHTML =
-            '<p class="cb-retest-q">' + esc(data.question.body) + "</p>" +
-            '<textarea class="fd-textarea" placeholder="自分の言葉で答える"></textarea>' +
-            '<div class="cb-q-actions"><button class="fd-button fd-button--emphasized cb-retest-grade">採点する</button></div>' +
+            '<p class="cb-retest-q cb-read">' + esc(data.question.body) + "</p>" +
+            '<textarea class="input" placeholder="自分の言葉で答える"></textarea>' +
+            '<div class="cb-q-actions"><button class="btn btn--primary cb-retest-grade">採点する</button></div>' +
             '<div class="cb-grade-result"></div>';
           area.querySelector(".cb-retest-grade").addEventListener("click", async (ev2) => {
             const answer = area.querySelector("textarea").value.trim();
