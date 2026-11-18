@@ -378,8 +378,21 @@ const PHASE1_QUESTION =
 
 /** At or below this many chunks the whole corpus goes into the prompt. */
 const ALL_CHUNKS_LIMIT = 60;
-/** Above the limit, vector search narrows the corpus to this many chunks. */
-const RETRIEVAL_TOP_K = 40;
+/** Above the limit, retrieval narrows the corpus to at most this many. */
+const SELECTION_CAP = 48;
+/**
+ * Retrieval queries for large corpora: the fixed question plus one query per
+ * facet of the skeleton (foundations, principles, framework, applications).
+ * A single query biases the selection toward its own phrasing; several
+ * queries, merged by best score, cover the field more evenly.
+ */
+const RETRIEVAL_QUERIES = [
+  PHASE1_QUESTION,
+  "基礎となる概念、その定義と成り立ち",
+  "重要な原則と、設計上の指針・トレードオフ",
+  "全体の枠組みと、構成要素どうしの関係",
+  "実際の応用例と、使われ方のパターン",
+];
 const MAX_NODES = 30;
 const MAX_EDGES = 60;
 
@@ -393,6 +406,8 @@ const EDGE_RELATIONS = new Set([
 
 interface GroundedChunk {
   id: string;
+  source_id: string;
+  idx: number;
   text: string;
   chapter: string | null;
   source_title: string;
@@ -435,15 +450,19 @@ interface StoredEdge {
 
 /**
  * Pick the chunks the skeleton is built from. Small corpora are used whole so
- * no part of the field is silently skipped; larger ones are narrowed by
- * vector search on the fixed question, ranked by similarity.
+ * no part of the field is silently skipped. Larger ones are narrowed by
+ * vector search with several facet queries (best score per chunk wins), then
+ * allocated across sources: every source first gets an equal floor of its
+ * best-scoring chunks, and the remaining slots go to the highest scores
+ * overall. Without the floor, one long or well-matching source can crowd out
+ * the rest of the field and the skeleton silently loses whole chapters.
  */
 async function gatherChunks(
   env: Env,
   projectId: string,
 ): Promise<GroundedChunk[]> {
   const { results } = await env.DB.prepare(
-    `SELECT c.id, c.text, c.chapter, s.title AS source_title
+    `SELECT c.id, c.source_id, c.idx, c.text, c.chapter, s.title AS source_title
        FROM chunks c
        JOIN sources s ON s.id = c.source_id
       WHERE c.project_id = ?
@@ -453,21 +472,51 @@ async function gatherChunks(
     .all<GroundedChunk>();
   if (results.length <= ALL_CHUNKS_LIMIT) return results;
 
-  const [questionVector] = await embed(env, [PHASE1_QUESTION]);
-  const matches = await env.VECTORIZE.query(questionVector, {
-    topK: 100,
-    returnMetadata: "none",
-  });
-  const byId = new Map(results.map((row) => [row.id, row]));
-  const ranked: GroundedChunk[] = [];
-  for (const match of matches.matches) {
-    const row = byId.get(match.id);
-    if (row) ranked.push(row);
-    if (ranked.length >= RETRIEVAL_TOP_K) break;
+  const queryVectors = await embed(env, RETRIEVAL_QUERIES);
+  const scores = new Map<string, number>();
+  for (const vector of queryVectors) {
+    const matches = await env.VECTORIZE.query(vector, {
+      topK: 100,
+      returnMetadata: "none",
+    });
+    for (const match of matches.matches) {
+      const previous = scores.get(match.id);
+      if (previous === undefined || match.score > previous) {
+        scores.set(match.id, match.score);
+      }
+    }
   }
-  // If vector search found nothing for this project, fall back to the first
-  // chunks in document order rather than building a map from nothing.
-  return ranked.length > 0 ? ranked : results.slice(0, RETRIEVAL_TOP_K);
+  // Chunks no query surfaced rank below every scored chunk.
+  const scoreOf = (row: GroundedChunk): number => scores.get(row.id) ?? -1;
+
+  const bySource = new Map<string, GroundedChunk[]>();
+  for (const row of results) {
+    const group = bySource.get(row.source_id);
+    if (group) group.push(row);
+    else bySource.set(row.source_id, [row]);
+  }
+
+  const selected = new Set<string>();
+  const floor = Math.max(1, Math.floor(SELECTION_CAP / bySource.size));
+  for (const group of bySource.values()) {
+    const ranked = [...group].sort(
+      (a, b) => scoreOf(b) - scoreOf(a) || a.idx - b.idx,
+    );
+    for (const row of ranked.slice(0, floor)) selected.add(row.id);
+  }
+  if (selected.size < SELECTION_CAP) {
+    // Stable sort: score ties keep document order (source order, then idx).
+    const rest = results
+      .filter((row) => !selected.has(row.id))
+      .sort((a, b) => scoreOf(b) - scoreOf(a));
+    for (const row of rest) {
+      if (selected.size >= SELECTION_CAP) break;
+      selected.add(row.id);
+    }
+  }
+
+  // Keep the prompt in document order regardless of selection order.
+  return results.filter((row) => selected.has(row.id));
 }
 
 /**
@@ -764,6 +813,7 @@ phases.post("/:id/phases/1", async (c) => {
     map,
     meta: {
       chunks_used: chunks.length,
+      sources_used: new Set(chunks.map((chunk) => chunk.source_id)).size,
       dropped_nodes: droppedNodes,
       dropped_edges: droppedEdges,
     },
