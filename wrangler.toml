@@ -17,7 +17,7 @@ binding = "BUCKET"
 bucket_name = "closedbook-sources"
 
 # --- Vectorize: chunk embeddings for source-grounded retrieval ---
-# Create with: wrangler vectorize create closedbook-chunks --dimensions=1536 --metric=cosine
+# Create with: wrangler vectorize create closedbook-chunks --dimensions=1024 --metric=cosine
 # (dimensions must match EMBEDDING_MODEL)
 [[vectorize]]
 binding = "VECTORIZE"
@@ -27,7 +27,7 @@ index_name = "closedbook-chunks"
 # BYOK: any OpenAI-compatible endpoint works (official APIs or gateways).
 LLM_BASE_URL = "https://api.openai.com/v1"
 LLM_MODEL = "gpt-4o"
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = "multilingual-e5-large"
 # LLM_API_KEY is a secret. Never put it here.
 #   local: copy .dev.vars.example to .dev.vars
 #   prod : wrangler secret put LLM_API_KEY

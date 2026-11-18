@@ -1,7 +1,7 @@
 # ClosedBook 設計メモ
 
 作成：2026-11-16
-状態：概念メモ。未着手。実装方式・公開範囲は未決定。
+状態：実装方式は候補C（Hono + Cloudflare）に決定し、Phase 0（資料取り込み）を実装済み（2026-11-18）。入力は Microsoft MarkItDown で変換した Markdown／テキストとし、埋め込みの参照構成は Sakura AI Engine の multilingual-e5-large（1024次元）。
 
 ## 1. 概要
 
@@ -90,7 +90,7 @@
 
 ## 6. 画面フロー（案）
 
-UI のデザイン基盤は **SAP Fundamental Styles（Fiori Horizon）** を流用する（2026-11-16 決定）。フレームワーク非依存の CSS ライブラリなので、Hono が配信する画面に `fundamental-styles` パッケージの CSS を読み込む形で使う。独自のデザインシステムは作らない。
+UI のデザイン基盤は **SAP Fundamental Styles（Fiori Horizon）** を流用する（2026-11-16 決定）。フレームワーク非依存の CSS ライブラリなので、Hono が配信する画面に `fundamental-styles` パッケージの CSS を読み込む形で使う。独自のデザインシステムは作らない。あわせて、不要なセカンダリラベルや説明は置かず、レイアウト自体に説明させる（2026-11-18 追加）。
 
 1. 分野一覧（プロジェクト、フェーズ進捗、穴の残数）
 2. 資料管理（アップロード、カバレッジ警告）

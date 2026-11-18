@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
+import { chunkMarkdown } from "../lib/chunk";
+import { embed } from "../lib/llm";
 
 /**
  * The learning protocol. Each phase is a fixed step, in order:
@@ -10,24 +12,357 @@ import type { Env } from "../env";
  *                             what is missing and what is shallow
  *   Phase 4  gaps          -> tracked understanding gaps + retests
  *
- * All endpoints are stubs for now (501). See docs/design-memo.md for the spec.
+ * Phase 0 is implemented; the other phase endpoints remain stubs (501).
+ * See docs/design-memo.md for the spec.
  */
 export const phases = new Hono<{ Bindings: Env }>();
 
 const notImplemented = (todo: string) => ({ error: "not_implemented", todo });
 
-// Phase 0: register a source file (original goes to R2, text is chunked,
-// chunks are embedded into Vectorize). PDF text extraction is the known
-// hard spot on Workers (128MB memory): use unpdf for text-based PDFs,
-// or extract text client-side before upload. OCR is out of scope.
-phases.post("/:id/sources", (c) =>
-  c.json(
-    notImplemented(
-      "store original in R2, extract text, chunk, embed into Vectorize, save chunks to D1",
-    ),
-    501,
-  ),
-);
+const EMBED_BATCH_SIZE = 16;
+const VECTOR_UPSERT_BATCH_SIZE = 100;
+
+interface ChunkRow {
+  id: string;
+  idx: number;
+  text: string;
+  chapter: string | null;
+}
+
+interface SourceRow {
+  id: string;
+  project_id: string;
+  title: string;
+  kind: string;
+  r2_key: string | null;
+  page_count: number | null;
+  created_at: string;
+}
+
+interface SourceWithCount extends SourceRow {
+  chunk_count: number;
+}
+
+function isFile(value: File | string | null): value is File {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    typeof (value as File).arrayBuffer === "function"
+  );
+}
+
+/** Keep the R2 key safe and flat; the project/source ids provide uniqueness. */
+function safeFileName(name: string): string {
+  const base = name.split(/[/\\]/).pop()?.trim() || "source.txt";
+  const cleaned = base.replace(/[\u0000-\u001f\u007f]/g, "_");
+  return cleaned.slice(0, 200) || "source.txt";
+}
+
+function contentTypeFor(fileName: string, declared: string): string {
+  if (declared) return declared;
+  return /\.(md|markdown)$/i.test(fileName)
+    ? "text/markdown; charset=utf-8"
+    : "text/plain; charset=utf-8";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Best-effort rollback. D1 writes happen in one atomic batch, but if the batch
+ * result is ambiguous (or a later read fails) deleting the freshly generated
+ * source id makes sure no source row can point at missing chunks.
+ */
+async function cleanupFailedIngestion(
+  env: Env,
+  sourceId: string,
+  r2Key: string,
+  r2Stored: boolean,
+  chunkIds: string[],
+): Promise<void> {
+  try {
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM chunks WHERE source_id = ?").bind(sourceId),
+      env.DB.prepare("DELETE FROM sources WHERE id = ?").bind(sourceId),
+    ]);
+  } catch (error) {
+    console.error("failed to roll back source rows", error);
+  }
+
+  try {
+    for (let i = 0; i < chunkIds.length; i += VECTOR_UPSERT_BATCH_SIZE) {
+      await env.VECTORIZE.deleteByIds(
+        chunkIds.slice(i, i + VECTOR_UPSERT_BATCH_SIZE),
+      );
+    }
+  } catch (error) {
+    console.error("failed to roll back vectors", error);
+  }
+
+  if (r2Stored) {
+    try {
+      await env.BUCKET.delete(r2Key);
+    } catch (error) {
+      console.error("failed to roll back R2 object", error);
+    }
+  }
+}
+
+// Phase 0: register a source file. The original goes to R2, the Markdown/text
+// is chunked, the chunks are embedded into Vectorize, and source + chunks are
+// written to D1 atomically. PDFs are converted to Markdown before upload.
+phases.post("/:id/sources", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ?")
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+
+  let form: FormData;
+  try {
+    form = await c.req.formData();
+  } catch {
+    return c.json(
+      { error: "invalid_form_data", message: "Expected multipart/form-data" },
+      400,
+    );
+  }
+
+  const uploaded = form.get("file");
+  if (!isFile(uploaded)) {
+    return c.json(
+      { error: "file is required", message: "Attach a Markdown or text file as 'file'" },
+      400,
+    );
+  }
+
+  const fileName = uploaded.name.trim() || "source.txt";
+  const baseName = fileName.split(/[/\\]/).pop()?.trim() || "source.txt";
+  if (/\.pdf$/i.test(baseName)) {
+    return c.json(
+      {
+        error: "unsupported_file_type",
+        message:
+          "PDF uploads are not supported. Convert the PDF to Markdown first (for example with Microsoft MarkItDown).",
+      },
+      400,
+    );
+  }
+
+  const titleField = form.get("title");
+  const title =
+    typeof titleField === "string" && titleField.trim()
+      ? titleField.trim()
+      : baseName;
+  const kindField = form.get("kind");
+  const kind =
+    typeof kindField === "string" && kindField.trim()
+      ? kindField.trim()
+      : "other";
+
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await uploaded.arrayBuffer();
+  } catch (error) {
+    return c.json(
+      {
+        error: "file_read_failed",
+        message: `Could not read the uploaded file: ${errorMessage(error)}`,
+      },
+      400,
+    );
+  }
+  if (bytes.byteLength === 0) {
+    return c.json({ error: "empty_file", message: "The uploaded file is empty" }, 400);
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+      bytes,
+    );
+  } catch (error) {
+    return c.json(
+      {
+        error: "invalid_utf8",
+        message: `Could not decode the uploaded file as UTF-8: ${errorMessage(error)}`,
+      },
+      400,
+    );
+  }
+  if (!text.trim()) {
+    return c.json(
+      { error: "empty_document", message: "The uploaded document contains no text" },
+      400,
+    );
+  }
+
+  const chunks = chunkMarkdown(text);
+  if (chunks.length === 0) {
+    return c.json(
+      { error: "empty_document", message: "The uploaded document produced no chunks" },
+      400,
+    );
+  }
+
+  const sourceId = crypto.randomUUID();
+  const r2Key = `projects/${projectId}/sources/${sourceId}/${safeFileName(baseName)}`;
+  const chunkRows: ChunkRow[] = chunks.map((chunk, idx) => ({
+    id: crypto.randomUUID(),
+    idx,
+    text: chunk.text,
+    chapter: chunk.chapter,
+  }));
+
+  let r2Stored = false;
+  try {
+    await c.env.BUCKET.put(r2Key, bytes, {
+      httpMetadata: {
+        contentType: contentTypeFor(baseName, uploaded.type),
+      },
+    });
+    r2Stored = true;
+
+    const vectors: VectorizeVector[] = [];
+    let dimensions: number | null = null;
+
+    for (let i = 0; i < chunkRows.length; i += EMBED_BATCH_SIZE) {
+      const batch = chunkRows.slice(i, i + EMBED_BATCH_SIZE);
+      const embeddings = await embed(
+        c.env,
+        batch.map((row) => row.text),
+      );
+      if (embeddings.length !== batch.length) {
+        throw new Error(
+          `Embedding API returned ${embeddings.length} vectors for ${batch.length} chunks`,
+        );
+      }
+
+      for (let j = 0; j < batch.length; j += 1) {
+        const values = embeddings[j];
+        if (!Array.isArray(values) || values.length === 0) {
+          throw new Error(`Embedding API returned an empty vector for chunk ${batch[j].idx}`);
+        }
+        if (dimensions === null) dimensions = values.length;
+        if (values.length !== dimensions) {
+          throw new Error(
+            `Embedding dimensions changed within the document (${dimensions} vs ${values.length})`,
+          );
+        }
+        vectors.push({
+          id: batch[j].id,
+          values,
+          metadata: {
+            project_id: projectId,
+            source_id: sourceId,
+          },
+        });
+      }
+    }
+
+    for (let i = 0; i < vectors.length; i += VECTOR_UPSERT_BATCH_SIZE) {
+      await c.env.VECTORIZE.upsert(
+        vectors.slice(i, i + VECTOR_UPSERT_BATCH_SIZE),
+      );
+    }
+
+    // D1 batch is a transaction: either the source and every chunk land, or
+    // none of them do.
+    await c.env.DB.batch([
+      c.env.DB
+        .prepare(
+          `INSERT INTO sources (id, project_id, title, kind, r2_key, page_count)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(sourceId, projectId, title, kind, r2Key, null),
+      ...chunkRows.map((row) =>
+        c.env.DB
+          .prepare(
+            `INSERT INTO chunks (id, source_id, project_id, idx, text, page, chapter)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            row.id,
+            sourceId,
+            projectId,
+            row.idx,
+            row.text,
+            null,
+            row.chapter,
+          ),
+      ),
+    ]);
+
+    const source = await c.env.DB.prepare(
+      "SELECT * FROM sources WHERE id = ?",
+    )
+      .bind(sourceId)
+      .first<SourceRow>();
+    if (!source) throw new Error("Source row was not found after insertion");
+
+    return c.json(
+      {
+        source: { ...source, chunk_count: chunkRows.length },
+        chunk_count: chunkRows.length,
+      },
+      201,
+    );
+  } catch (error) {
+    console.error("source ingestion failed", error);
+    await cleanupFailedIngestion(
+      c.env,
+      sourceId,
+      r2Key,
+      r2Stored,
+      chunkRows.map((row) => row.id),
+    );
+    return c.json(
+      {
+        error: "source_ingestion_failed",
+        message: errorMessage(error),
+      },
+      500,
+    );
+  }
+});
+
+phases.get("/:id/sources", async (c) => {
+  const projectId = c.req.param("id");
+  const project = await c.env.DB.prepare("SELECT id FROM projects WHERE id = ?")
+    .bind(projectId)
+    .first<{ id: string }>();
+  if (!project) return c.json({ error: "project not found" }, 404);
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT s.id, s.project_id, s.title, s.kind, s.r2_key, s.page_count,
+            s.created_at, COUNT(c.id) AS chunk_count
+       FROM sources s
+       LEFT JOIN chunks c ON c.source_id = s.id
+      WHERE s.project_id = ?
+      GROUP BY s.id
+      ORDER BY s.created_at ASC, s.id ASC`,
+  )
+    .bind(projectId)
+    .all<SourceWithCount>();
+
+  const sources = results.map((source) => ({
+    ...source,
+    chunk_count: Number(source.chunk_count) || 0,
+  }));
+  const totalChunks = sources.reduce(
+    (sum, source) => sum + source.chunk_count,
+    0,
+  );
+
+  return c.json({
+    sources,
+    coverage: {
+      source_count: sources.length,
+      chunk_count: totalChunks,
+    },
+  });
+});
 
 // Phase 1: build the knowledge map (nodes/edges with citations to chunks).
 phases.post("/:id/phases/1", (c) =>
