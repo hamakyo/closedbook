@@ -470,46 +470,65 @@ async function gatherChunks(
   return ranked.length > 0 ? ranked : results.slice(0, RETRIEVAL_TOP_K);
 }
 
-function validCitations(value: unknown, allowed: Set<string>): string[] {
+/**
+ * Resolve model citations to chunk ids. The model cites short labels (C1,
+ * C2, ...); raw chunk ids are also accepted in case a model echoes those.
+ * Anything else is not a citation and is dropped.
+ */
+function resolveCitations(
+  value: unknown,
+  resolver: Map<string, string>,
+): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const item of value) {
-    if (typeof item === "string" && allowed.has(item) && !seen.has(item)) {
-      seen.add(item);
-      out.push(item);
+    if (typeof item !== "string") continue;
+    const id = resolver.get(item.trim());
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      out.push(id);
     }
   }
   return out;
 }
 
+/**
+ * Short per-request labels (C1, C2, ...) stand in for chunk UUIDs in the
+ * prompt. Models copy short labels reliably; at corpus scale they mangle
+ * raw UUIDs, which silently breaks citation matching.
+ */
 function buildPhase1Messages(chunks: GroundedChunk[]) {
   const corpus = chunks
-    .map((chunk) => `[${chunk.id}] ${chunk.chapter ?? chunk.source_title}\n${chunk.text}`)
+    .map(
+      (chunk, i) =>
+        `[C${i + 1}] ${chunk.chapter ?? chunk.source_title}\n${chunk.text}`,
+    )
     .join("\n\n");
   return [
     {
       role: "system" as const,
       content:
-        "あなたは学習支援システムの知識構造化エンジンです。与えられた資料チャンクだけに基づいて、分野の知識の骨格を構造化JSONで出力します。資料に書かれていないことは書かず、一般知識で補いません。すべてのノードとエッジには根拠となるチャンクのIDを citations に必ず含め、根拠を示せない概念は出力しません。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
+        "あなたは学習支援システムの知識構造化エンジンです。与えられた資料チャンクだけに基づいて、分野の知識の骨格を構造化JSONで出力します。資料に書かれていないことは書かず、一般知識で補いません。すべてのノードとエッジには根拠となるチャンクのラベル（C1、C2 など）を citations に必ず含め、根拠を示せない概念は出力しません。出力はJSONオブジェクトのみとし、前置きや説明文は付けません。",
     },
     {
       role: "user" as const,
       content: `質問：${PHASE1_QUESTION}
 
-資料チャンク（各チャンクは [チャンクID] 章パス の見出し付き）:
+資料チャンク（各チャンクは [ラベル] 章パス の見出し付き）:
 
 ${corpus}
 
 出力形式（JSON）:
 {
   "nodes": [
-    {"name": "概念名", "layer": "foundation" | "core" | "branch", "description": "資料に基づく1〜2文の説明", "citations": ["チャンクID"]}
+    {"name": "概念名", "layer": "foundation" | "core" | "branch", "description": "資料に基づく1〜2文の説明", "citations": ["C1"]}
   ],
   "edges": [
-    {"from": "概念名", "to": "概念名", "relation": "prerequisite" | "causal" | "contrast" | "part_of", "citations": ["チャンクID"]}
+    {"from": "概念名", "to": "概念名", "relation": "prerequisite" | "causal" | "contrast" | "part_of", "citations": ["C1"]}
   ]
 }
+citations にはチャンクのラベル（C1、C2 など）をそのまま書くこと。
 layer: foundation=他の概念の前提になる土台、core=中核、branch=応用・派生の枝葉。
 relation: prerequisite=fromがtoの前提、causal=fromがtoに因果的に影響する、contrast=対比、part_of=fromがtoの一部。
 ノードは5〜20個に絞ること。edges の from/to は nodes の name と完全に一致させること。`,
@@ -522,14 +541,18 @@ function validateMap(
   raw: RawMap,
   chunks: GroundedChunk[],
 ): { nodes: StoredNode[]; edges: StoredEdge[]; droppedNodes: number; droppedEdges: number } {
-  const allowed = new Set(chunks.map((chunk) => chunk.id));
+  const resolver = new Map<string, string>();
+  chunks.forEach((chunk, i) => {
+    resolver.set(`C${i + 1}`, chunk.id);
+    resolver.set(chunk.id, chunk.id);
+  });
   const nodes: StoredNode[] = [];
   const idByName = new Map<string, string>();
   let droppedNodes = 0;
 
   for (const rawNode of Array.isArray(raw.nodes) ? raw.nodes : []) {
     const name = typeof rawNode.name === "string" ? rawNode.name.trim() : "";
-    const citations = validCitations(rawNode.citations, allowed);
+    const citations = resolveCitations(rawNode.citations, resolver);
     if (!name || idByName.has(name) || citations.length === 0) {
       droppedNodes += 1;
       continue;
@@ -559,7 +582,7 @@ function validateMap(
     const to = typeof rawEdge.to === "string" ? rawEdge.to.trim() : "";
     const relation =
       typeof rawEdge.relation === "string" ? rawEdge.relation : "";
-    const citations = validCitations(rawEdge.citations, allowed);
+    const citations = resolveCitations(rawEdge.citations, resolver);
     const fromId = idByName.get(from);
     const toId = idByName.get(to);
     if (
@@ -685,8 +708,7 @@ phases.post("/:id/phases/1", async (c) => {
     return c.json(
       {
         error: "phase1_no_grounded_nodes",
-        message:
-          "The model returned no node with a valid citation to the provided chunks; nothing was stored",
+        message: `The model returned no node with a valid citation to the provided chunks; nothing was stored (raw nodes: ${Array.isArray(raw.nodes) ? raw.nodes.length : 0}, dropped: ${droppedNodes})`,
       },
       502,
     );
