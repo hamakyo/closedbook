@@ -8,6 +8,38 @@ import fundamentalCss from "./assets/fundamental-styles.css";
 
 const app = new Hono<{ Bindings: Env }>();
 
+// Access lock. The content this app stores is derived from the user's own
+// study materials (copyrighted books among them), so it must never be
+// world-readable. Fail closed: without a UI_PASSWORD secret the app
+// refuses everything; with one, every route requires Basic auth.
+app.use("*", async (c, next) => {
+  const expected = c.env.UI_PASSWORD;
+  if (!expected) {
+    return c.text(
+      "ClosedBook is locked. Set a password to enable access: wrangler secret put UI_PASSWORD",
+      503,
+    );
+  }
+  const header = c.req.header("Authorization") ?? "";
+  let ok = false;
+  if (header.startsWith("Basic ")) {
+    try {
+      const decoded = atob(header.slice("Basic ".length));
+      const password = decoded.slice(decoded.indexOf(":") + 1);
+      ok = password === expected;
+    } catch {
+      ok = false;
+    }
+  }
+  if (!ok) {
+    return new Response("Authentication required", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="ClosedBook"' },
+    });
+  }
+  await next();
+});
+
 app.get("/", (c) => c.html(uiHtml));
 
 const cssHeaders = {
