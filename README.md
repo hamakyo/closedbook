@@ -40,7 +40,7 @@ pnpm install
 pnpm exec wrangler d1 create closedbook
 pnpm exec wrangler r2 bucket create closedbook-sources
 pnpm exec wrangler vectorize create closedbook-chunks --dimensions=1536 --metric=cosine
-# → wrangler.toml の database_id を、発行された実 ID に書き換える
+# → cloudflare.config.ts の DB.id を、発行された実 ID に書き換える
 
 # スキーマ適用
 pnpm db:local    # ローカル確認用
@@ -48,13 +48,13 @@ pnpm db:remote   # 本番用
 
 # LLM のキー（自分のもの）を設定
 cp .dev.vars.example .dev.vars   # ローカル用：LLM_API_KEY を記入
-pnpm exec wrangler secret put LLM_API_KEY   # 本番用
+pnpm exec cf workers secrets update LLM_API_KEY   # 本番用
 
-pnpm dev         # ローカル起動
-pnpm deploy      # 自分の Cloudflare にデプロイ
+pnpm dev         # ローカル起動（cf dev）
+pnpm deploy      # 自分の Cloudflare にデプロイ（cf deploy）
 ```
 
-エンドポイントやモデルは `wrangler.toml` の `[vars]` で変更できます（`LLM_BASE_URL` / `LLM_MODEL` / `EMBEDDING_MODEL`）。埋め込みモデルの次元を変えたら、Vectorize インデックスの `--dimensions` も合わせてください。
+エンドポイントやモデルは [cloudflare.config.ts](cloudflare.config.ts) の `worker.env` で変更できます（`LLM_BASE_URL` / `LLM_MODEL` / `EMBEDDING_MODEL`）。埋め込みモデルの次元を変えたら、Vectorize インデックスの `--dimensions` も合わせてください。
 
 自分だけが使う前提なら、認証は Cloudflare Access を前に置くのが簡単です。
 
